@@ -1,0 +1,13 @@
+/* On ANY button hover, make the icon inside white */
+.video-actions-list .ant-btn:hover .anticon {
+  color: #ffffff; /* White icon on hover */
+}
+
+/* Override AntD's default danger button style for its non-hover state */
+.video-actions-list .ant-btn.ant-btn-dangerous:not(:hover) {
+  background-color: transparent;
+  border-color: transparent;
+}
+.video-actions-list .ant-btn.ant-btn-dangerous:not(:hover) .anticon {
+  color: #8c8c8c;
+} 
