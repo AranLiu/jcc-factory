@@ -8,32 +8,11 @@
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:server": "cd server && npm run dev",
     "dev:client": "cd client && npm run dev",
+    "build": "cd client && npm run build",
     "install:all": "npm install && cd server && npm install && cd ../client && npm install",
     "setup:admin": "node scripts/setup-admin.js"
   },
-  "dependencies": {
-    "@ffmpeg-installer/ffmpeg": "^1.1.0",
-    "@ffprobe-installer/ffprobe": "^2.1.2",
-    "@google/genai": "^1.4.0",
-    "@google/generative-ai": "^0.24.1",
-    "@tiptap/pm": "^2.14.0",
-    "@tiptap/react": "^2.14.0",
-    "@tiptap/starter-kit": "^2.14.0",
-    "cors": "^2.8.5",
-    "dayjs": "^1.11.10",
-    "docx": "^9.5.0",
-    "dotenv": "^16.5.0",
-    "express": "^4.19.2",
-    "fluent-ffmpeg": "^2.1.2",
-    "html-to-docx": "^1.8.0",
-    "jsonwebtoken": "^9.0.2",
-    "mammoth": "^1.9.1",
-    "multer": "^2.0.1",
-    "mysql2": "^3.9.4",
-    "socket.io": "^4.8.1"
-  },
   "devDependencies": {
-    "bcryptjs": "^2.4.3",
     "concurrently": "^8.2.2"
   }
 }
