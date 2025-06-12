@@ -1,5 +1,27 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
+// 从本地服务器获取API密钥的函数
+async function getApiKeyFromLocalServer() {
+  try {
+    // 尝试从本地服务器获取API密钥
+    const response = await fetch('http://localhost:3001/api/system-config/config/gemini_api_key', {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      timeout: 5000
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      return data.success ? data.data?.value : null;
+    }
+  } catch (error) {
+    console.log('无法从本地服务器获取API密钥:', error.message);
+  }
+  return null;
+}
+
 const handler = async (event, context) => {
   // 处理 CORS
   const headers = {
@@ -77,9 +99,24 @@ const handler = async (event, context) => {
       };
     }
 
-    // 获取API密钥
-    const apiKey = event.headers.authorization?.replace('Bearer ', '') || 
-                   event.headers.Authorization?.replace('Bearer ', '');
+    // 获取API密钥 - 支持多种来源
+    let apiKey = event.headers.authorization?.replace('Bearer ', '') || 
+                 event.headers.Authorization?.replace('Bearer ', '');
+
+    // 如果没有从请求头获取到API密钥，尝试从环境变量获取
+    if (!apiKey) {
+      apiKey = process.env.GEMINI_API_KEY;
+      console.log('Using API key from environment variables');
+    }
+
+    // 如果还是没有API密钥，尝试从本地服务器获取（仅在开发环境）
+    if (!apiKey && process.env.NODE_ENV !== 'production') {
+      console.log('Attempting to get API key from local server...');
+      apiKey = await getApiKeyFromLocalServer();
+      if (apiKey) {
+        console.log('Successfully retrieved API key from local server');
+      }
+    }
 
     // 对于需要API密钥的请求，检查密钥
     if (!apiKey || apiKey === 'test-key') {
