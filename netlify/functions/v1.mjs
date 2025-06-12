@@ -34,11 +34,8 @@ const handler = async (event, context) => {
       body: event.body ? 'present' : 'empty'
     });
     
-    const apiKey = event.headers.authorization?.replace('Bearer ', '') || 
-                   event.headers.Authorization?.replace('Bearer ', '');
-
     // 处理模型列表请求（不需要API密钥，用于测试连接）
-    if ((path === '/v1/models' || path === '/models') && event.httpMethod === 'GET') {
+    if ((path === '/v1/models' || path === '/models' || path === '/') && event.httpMethod === 'GET') {
       console.log('Processing models request without API key validation');
       
       const models = {
@@ -80,9 +77,13 @@ const handler = async (event, context) => {
       };
     }
 
+    // 获取API密钥
+    const apiKey = event.headers.authorization?.replace('Bearer ', '') || 
+                   event.headers.Authorization?.replace('Bearer ', '');
+
     // 对于需要API密钥的请求，检查密钥
     if (!apiKey || apiKey === 'test-key') {
-      console.log('API key missing or test key used');
+      console.log('API key missing or test key used for path:', path);
       return {
         statusCode: 401,
         headers,
@@ -231,4 +232,4 @@ const handler = async (event, context) => {
   }
 };
 
-export { handler }; 
+export { handler };
