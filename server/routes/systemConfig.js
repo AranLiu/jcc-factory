@@ -4,6 +4,33 @@ const systemConfigService = require('../services/systemConfigService');
 
 const router = express.Router();
 
+/**
+ * 获取公开的默认Prompt配置 (不需要管理员权限，只需要登录)
+ */
+router.get('/public-prompts', authenticateToken, async (req, res) => {
+    try {
+        const configs = await systemConfigService.getAllConfigs();
+        
+        // 只返回公开的Prompt配置
+        const publicPrompts = {
+            video_analysis_prompt: configs.video_analysis_prompt || null,
+            script_integration_prompt: configs.script_integration_prompt || null
+        };
+        
+        res.json({
+            success: true,
+            data: publicPrompts
+        });
+    } catch (error) {
+        console.error('获取公开Prompt配置失败:', error);
+        res.status(500).json({
+            success: false,
+            message: '获取默认Prompt配置失败',
+            error: error.message
+        });
+    }
+});
+
 // 所有系统配置路由都需要管理员权限
 router.use(authenticateToken, requireAdmin);
 
@@ -124,47 +151,6 @@ router.put('/models', async (req, res) => {
 });
 
 /**
- * 更新代理配置
- */
-router.put('/proxy', async (req, res) => {
-    try {
-        const { enabled, httpProxy, httpsProxy, noProxy } = req.body;
-        
-        // 更新代理启用状态
-        await systemConfigService.updateConfig('proxy_enabled', Boolean(enabled), req.user.id);
-        
-        if (enabled) {
-            // 如果启用代理，更新代理配置
-            if (httpProxy) {
-                await systemConfigService.updateConfig('proxy_http', httpProxy, req.user.id);
-            }
-            
-            if (httpsProxy) {
-                await systemConfigService.updateConfig('proxy_https', httpsProxy, req.user.id);
-            }
-            
-            if (noProxy !== undefined) {
-                await systemConfigService.updateConfig('proxy_no_proxy', noProxy || 'localhost,127.0.0.1', req.user.id);
-            }
-        }
-        
-        await systemConfigService.applyConfigs();
-        
-        res.json({
-            success: true,
-            message: enabled ? '代理配置更新成功' : '代理已禁用'
-        });
-    } catch (error) {
-        console.error('更新代理配置失败:', error);
-        res.status(500).json({
-            success: false,
-            message: '更新代理配置失败',
-            error: error.message
-        });
-    }
-});
-
-/**
  * 测试Gemini API连接
  */
 router.post('/test-gemini', async (req, res) => {
@@ -180,27 +166,6 @@ router.post('/test-gemini', async (req, res) => {
         res.status(500).json({
             success: false,
             message: '测试连接失败',
-            error: error.message
-        });
-    }
-});
-
-/**
- * 测试代理连接
- */
-router.post('/test-proxy', async (req, res) => {
-    try {
-        const result = await systemConfigService.testProxyConnection();
-        
-        res.json({
-            success: true,
-            data: result
-        });
-    } catch (error) {
-        console.error('测试代理连接失败:', error);
-        res.status(500).json({
-            success: false,
-            message: '测试代理连接失败',
             error: error.message
         });
     }
@@ -250,27 +215,6 @@ router.post('/clear-cache', async (req, res) => {
         res.status(500).json({
             success: false,
             message: '清除缓存失败',
-            error: error.message
-        });
-    }
-});
-
-/**
- * 获取推荐的代理URL
- */
-router.get('/proxy-urls', async (req, res) => {
-    try {
-        const urls = await systemConfigService.getRecommendedProxyUrls();
-        
-        res.json({
-            success: true,
-            data: urls
-        });
-    } catch (error) {
-        console.error('获取代理URL失败:', error);
-        res.status(500).json({
-            success: false,
-            message: '获取代理URL失败',
             error: error.message
         });
     }
@@ -376,6 +320,86 @@ router.put('/config/:key', async (req, res) => {
         res.status(500).json({
             success: false,
             message: '设置配置失败',
+            error: error.message
+        });
+    }
+});
+
+/**
+ * 测试代理连通性
+ */
+router.post('/test-proxy', async (req, res) => {
+    try {
+        const result = await systemConfigService.testProxyConnection();
+        res.json({
+            success: true,
+            data: result
+        });
+    } catch (error) {
+        console.error('测试代理连通性失败:', error);
+        res.status(500).json({
+            success: false,
+            message: '测试代理连通性失败',
+            error: error.message
+        });
+    }
+});
+
+/**
+ * 更新视频解析Prompt
+ */
+router.put('/video-analysis-prompt', async (req, res) => {
+    try {
+        const { prompt } = req.body;
+        
+        if (!prompt || typeof prompt !== 'string') {
+            return res.status(400).json({
+                success: false,
+                message: '视频解析Prompt不能为空'
+            });
+        }
+
+        await systemConfigService.updateConfig('video_analysis_prompt', prompt, req.user.id);
+        
+        res.json({
+            success: true,
+            message: '视频解析Prompt更新成功'
+        });
+    } catch (error) {
+        console.error('更新视频解析Prompt失败:', error);
+        res.status(500).json({
+            success: false,
+            message: '更新视频解析Prompt失败',
+            error: error.message
+        });
+    }
+});
+
+/**
+ * 更新剧本整合Prompt
+ */
+router.put('/script-integration-prompt', async (req, res) => {
+    try {
+        const { prompt } = req.body;
+        
+        if (!prompt || typeof prompt !== 'string') {
+            return res.status(400).json({
+                success: false,
+                message: '剧本整合Prompt不能为空'
+            });
+        }
+
+        await systemConfigService.updateConfig('script_integration_prompt', prompt, req.user.id);
+        
+        res.json({
+            success: true,
+            message: '剧本整合Prompt更新成功'
+        });
+    } catch (error) {
+        console.error('更新剧本整合Prompt失败:', error);
+        res.status(500).json({
+            success: false,
+            message: '更新剧本整合Prompt失败',
             error: error.message
         });
     }

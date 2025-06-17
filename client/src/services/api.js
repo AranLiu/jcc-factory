@@ -44,20 +44,20 @@ export const systemConfigAPI = {
   // 获取连接状态
   getStatus: () => api.get('/api/system-config/status'),
   
+  // 获取公开的默认Prompt配置
+  getPublicPrompts: () => api.get('/api/system-config/public-prompts'),
+  
   // 更新Gemini API密钥
   updateGeminiKey: (apiKey) => api.put('/api/system-config/gemini-key', { apiKey }),
   
   // 更新模型配置
   updateModels: (defaultModel, availableModels) => api.put('/api/system-config/models', { defaultModel, availableModels }),
   
-  // 更新代理配置
-  updateProxy: (enabled, httpProxy, httpsProxy, noProxy) => api.put('/api/system-config/proxy', { enabled, httpProxy, httpsProxy, noProxy }),
+  // 更新视频解析Prompt
+  updateVideoAnalysisPrompt: (prompt) => api.put('/api/system-config/video-analysis-prompt', { prompt }),
   
-  // 测试Gemini连接（使用更长超时）
-  testGemini: () => api.post('/api/system-config/test-gemini', {}, { timeout: 120000 }),
-  
-  // 测试代理连接（使用更长超时）
-  testProxy: () => api.post('/api/system-config/test-proxy', {}, { timeout: 120000 }),
+  // 更新剧本整合Prompt
+  updateScriptIntegrationPrompt: (prompt) => api.put('/api/system-config/script-integration-prompt', { prompt }),
   
   // 应用配置
   applyConfigs: () => api.post('/api/system-config/apply'),
@@ -65,20 +65,16 @@ export const systemConfigAPI = {
   // 清除缓存
   clearCache: () => api.post('/api/system-config/clear-cache'),
   
-  // 获取推荐的代理URL
-  getProxyUrls: () => api.get('/api/system-config/proxy-urls'),
-  
-  // 获取代理服务配置
-  getProxyConfig: () => api.get('/api/system-config/proxy-config'),
-  
-  // 更新代理服务配置
-  updateProxyConfig: (config) => api.put('/api/system-config/proxy-config', config),
-  
   // 获取单个配置
   getConfig: (key) => api.get(`/api/system-config/config/${key}`),
   
   // 设置单个配置
-  setConfig: (key, value, userId) => api.put(`/api/system-config/config/${key}`, { value, userId })
+  setConfig: (key, value, userId) => api.put(`/api/system-config/config/${key}`, { value, userId }),
+  
+  // 恢复：测试Gemini连接（使用更长超时）
+  testGemini: () => api.post('/api/system-config/test-gemini', {}, { timeout: 120000 }),
+  // 新增：测试代理连通性（如有后端接口）
+  testProxy: () => api.post('/api/system-config/test-proxy', {}, { timeout: 120000 }),
 }
 
 // 项目相关API

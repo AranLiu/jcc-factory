@@ -22,7 +22,8 @@ import {
   Modal,
   Popconfirm,
   Tooltip,
-  Tabs
+  Tabs,
+  InputNumber
 } from 'antd'
 import { 
   ArrowLeftOutlined,
@@ -44,7 +45,8 @@ import {
 } from '@ant-design/icons'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { projectAPI, fileAPI, aiAPI, knowledgeBaseAPI } from '../services/api'
+import { projectAPI, fileAPI, aiAPI, knowledgeBaseAPI, systemConfigAPI } from '../services/api'
+import VideoPlayer from '../components/VideoPlayer'
 
 import dayjs from 'dayjs'
 import './ProjectDetail.css'
@@ -58,10 +60,9 @@ const { Dragger } = Upload;
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 // 可编辑、可放大的文本域组件
-const EditableTextArea = ({ value, onChange, onSave, placeholder, title = "编辑内容", rows = 5, disabled = false }) => {
+const EditableTextArea = ({ value, onChange, onSave, onLoadDefault, placeholder, title = "编辑内容", rows = 5, disabled = false, autoSize = false }) => {
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [modalContent, setModalContent] = useState(value);
-  const [isLocked, setIsLocked] = useState(true);
 
   useEffect(() => {
     setModalContent(value);
@@ -71,7 +72,6 @@ const EditableTextArea = ({ value, onChange, onSave, placeholder, title = "编�
     onChange(modalContent);
     if(onSave) onSave(modalContent);
     setIsModalVisible(false);
-    setIsLocked(true);
   }
   
   const handleModalCancel = () => {
@@ -79,37 +79,35 @@ const EditableTextArea = ({ value, onChange, onSave, placeholder, title = "编�
     setIsModalVisible(false);
   }
 
-  const handleInlineSave = () => {
-    if (onSave) {
-      onSave(value);
-    } else {
-      message.success('内容已暂存');
+  const handleLoadDefault = async () => {
+    if (onLoadDefault) {
+      try {
+        await onLoadDefault();
+        message.success('已加载系统默认Prompt');
+      } catch (error) {
+        message.error('加载默认Prompt失败');
+      }
     }
-    setIsLocked(true);
   }
 
   return (
-    <div style={{ position: 'relative' }}>
+    <div style={{ position: 'relative', flex: autoSize ? 1 : 'none', display: autoSize ? 'flex' : 'block', flexDirection: 'column' }}>
       <TextArea
         value={value}
-        onChange={disabled ? undefined : (e) => onChange(e.target.value)}
-        readOnly={disabled || isLocked}
-        rows={rows}
+        readOnly={true} // 始终只读，不允许直接编辑
+        rows={autoSize ? undefined : rows}
+        autoSize={autoSize ? { minRows: 6 } : false}
         placeholder={disabled ? "只读权限，无法编辑" : placeholder}
-        style={(disabled || isLocked) ? { backgroundColor: '#f5f5f5' } : {}}
+        style={{ backgroundColor: '#f5f5f5', flex: autoSize ? 1 : 'none' }}
         disabled={disabled}
       />
       {!disabled && (
         <div style={{ position: 'absolute', top: 5, right: 5, zIndex: 10, display: 'flex', gap: '4px' }}>
-           {isLocked ? (
-              <Tooltip title="编辑">
-                <Button icon={<EditOutlined />} onClick={() => setIsLocked(false)} />
-              </Tooltip>
-           ) : (
-              <Tooltip title="保存">
-                <Button icon={<SaveOutlined />} onClick={handleInlineSave} />
-              </Tooltip>
-           )}
+          {onLoadDefault && (
+            <Tooltip title="加载系统默认">
+              <Button icon={<PicCenterOutlined />} onClick={handleLoadDefault} />
+            </Tooltip>
+          )}
           <Tooltip title="放大编辑">
             <Button 
               icon={<ExpandOutlined />} 
@@ -185,12 +183,26 @@ const VideoCard = ({ file, onRename, onAnalyze, onPlay, onDelete, onEdit, onDown
             <div style={{ flex: '0 0 200px', textAlign: 'center' }}>
               <div className="video-thumbnail-list" onClick={() => onPlay(file)}>
                 {file.thumbnail_path ? (
-                  <img alt="" src={file.thumbnail_path} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                ) : (
-                  <div className="thumbnail-placeholder-list">
-                    <FileTextOutlined />
-                  </div>
-                )}
+                  <img 
+                    alt={`${file.original_name} 缩略图`} 
+                    src={file.thumbnail_path} 
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    onError={(e) => {
+                      console.error('缩略图加载失败:', file.thumbnail_path);
+                      e.target.style.display = 'none';
+                      e.target.nextSibling.style.display = 'flex';
+                    }}
+                    onLoad={() => {
+                      console.log('缩略图加载成功:', file.thumbnail_path);
+                    }}
+                  />
+                ) : null}
+                <div 
+                  className="thumbnail-placeholder-list" 
+                  style={{ display: file.thumbnail_path ? 'none' : 'flex' }}
+                >
+                  <FileTextOutlined />
+                </div>
                 <div className="thumbnail-overlay-list">
                   <PlayCircleOutlined />
                 </div>
@@ -341,29 +353,27 @@ const ProjectDetail = () => {
 
   
   const canEdit = useMemo(() => {
+    if (user?.role === 'admin') {
+      return true; // 管理员总是可编辑
+    }
     if (userPermission === 'global') {
       return true; // 全局权限用户总是可以编辑所有项目
     }
-    
-          if (!project) {
-        // 项目加载中时，给予乐观预估
-        // personal和readonly_global用户都能编辑自己的项目
-        return userPermission === 'personal' || userPermission === 'readonly_global';
-      }
-    
-          // 项目加载完成后，验证具体权限
-      const isOwner = Number(project.user_id) === Number(user?.id);
-      
-      if (userPermission === 'personal') {
-        return isOwner; // personal权限：只能编辑自己的项目
-      }
-      
-      if (userPermission === 'readonly_global') {
-        return isOwner; // readonly_global权限：可以编辑自己的项目，其他项目只读
-      }
-      
-      return false;
-  }, [userPermission, project, user?.id]);
+    if (!project) {
+      // 项目加载中时，给予乐观预估
+      // personal和readonly_global用户都能编辑自己的项目
+      return userPermission === 'personal' || userPermission === 'readonly_global';
+    }
+    // 项目加载完成后，验证具体权限
+    const isOwner = Number(project.user_id) === Number(user?.id);
+    if (userPermission === 'personal') {
+      return isOwner; // personal权限：只能编辑自己的项目
+    }
+    if (userPermission === 'readonly_global') {
+      return isOwner; // readonly_global权限：可以编辑自己的项目，其他项目只读
+    }
+    return false;
+  }, [userPermission, project, user?.id, user?.role]);
   
   // 判断是否对当前项目只读（非所有者的readonly_global用户）
   const isReadOnly = useMemo(() => {
@@ -398,6 +408,10 @@ const ProjectDetail = () => {
   const [modelConfig, setModelConfig] = useState({ 
     defaultModel: 'gemini-1.5-flash', 
     availableModels: ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro'] 
+  });
+  const [usingSystemDefaults, setUsingSystemDefaults] = useState({
+    analysis: false,
+    integration: false
   });
   
   const [form] = Form.useForm()
@@ -443,20 +457,49 @@ const ProjectDetail = () => {
   // 移除自动刷新，改为任务完成时的状态更新
 
   // 从数据库加载Prompt
-  const loadSavedPrompts = () => {
+  const loadSavedPrompts = async () => {
     try {
-      // 从项目数据中加载已保存的Prompt
+      // 先获取系统默认Prompt
+      let defaultPrompts = {}
+      try {
+        const response = await systemConfigAPI.getPublicPrompts()
+        if (response.success && response.data) {
+          defaultPrompts = {
+            analysis_prompt: response.data.video_analysis_prompt?.value || '',
+            integrationPrompt: response.data.script_integration_prompt?.value || ''
+          }
+        }
+      } catch (error) {
+        console.warn('加载系统默认Prompt失败:', error)
+      }
+
+      // 从项目数据中加载已保存的Prompt（优先使用项目自定义的）
+      const formData = { ...defaultPrompts }
+      const usingDefaults = { analysis: false, integration: false }
+      
       if (project) {
-        const formData = {}
         if (project.analysis_prompt) {
           formData.analysis_prompt = project.analysis_prompt
+        } else if (defaultPrompts.analysis_prompt) {
+          usingDefaults.analysis = true
         }
+        
         if (project.integration_prompt) {
           formData.integrationPrompt = project.integration_prompt
+        } else if (defaultPrompts.integrationPrompt) {
+          usingDefaults.integration = true
         }
-        if (Object.keys(formData).length > 0) {
-          form.setFieldsValue(formData)
-        }
+      } else {
+        // 如果没有项目数据，且有默认值，则标记为使用系统默认
+        if (defaultPrompts.analysis_prompt) usingDefaults.analysis = true
+        if (defaultPrompts.integrationPrompt) usingDefaults.integration = true
+      }
+      
+      setUsingSystemDefaults(usingDefaults)
+      
+      // 设置表单值
+      if (Object.keys(formData).length > 0) {
+        form.setFieldsValue(formData)
       }
     } catch (error) {
       console.warn('加载保存的Prompt失败:', error)
@@ -501,7 +544,7 @@ const ProjectDetail = () => {
         fileId: values.fileId,
         prompt: values.prompt,
         modelConfig: {
-          temperature: values.temperature || 0.7,
+          temperature: values.temperature || 1,
           model: values.model || 'gemini-pro'
         }
       })
@@ -541,6 +584,12 @@ const ProjectDetail = () => {
         }
       } catch (error) {
         clearInterval(interval)
+        // 新增：403权限错误友好提示
+        if (error.response?.status === 403) {
+          message.error('无权访问该AI任务，请确认登录账号与项目归属一致')
+          // 可选：自动刷新用户信息或跳转登录
+          // window.location.reload()
+        }
       }
     }, 3000)
   }
@@ -575,10 +624,40 @@ const ProjectDetail = () => {
     }
   }
 
+  // 从文件名中提取集数
+  const extractEpisodeNumber = (filename) => {
+    // 移除文件扩展名
+    const nameWithoutExt = filename.replace(/\.[^/.]+$/, "");
+    
+    // 尝试匹配各种格式的数字
+    const patterns = [
+      /第(\d+)集/,           // 第X集
+      /第(\d+)话/,           // 第X话
+      /(\d+)集/,             // X集
+      /(\d+)话/,             // X话
+      /ep(\d+)/i,            // epX
+      /episode(\d+)/i,       // episodeX
+      /(\d+)/,               // 纯数字（作为后备选项）
+    ];
+    
+    for (const pattern of patterns) {
+      const match = nameWithoutExt.match(pattern);
+      if (match && match[1]) {
+        return parseInt(match[1]);
+      }
+    }
+    
+    return null;
+  };
+
   const handleConfirmSelectionAndAddToDraft = () => {
     const selectedFiles = processedFiles.filter(f => modalSelectedFileIds.has(f.id));
     const contentToDraft = selectedFiles
-      .map(f => `【${f.original_name}】\n${f.task_result || '无内容'}`)
+      .map(f => {
+        const episodeNum = extractEpisodeNumber(f.original_name);
+        const episodeTitle = episodeNum ? `第${episodeNum}集` : f.original_name;
+        return `${episodeTitle}\n\n${f.task_result || '无内容'}`;
+      })
       .join('\n\n---\n\n');
     
     setDraftContent(prev => prev ? `${prev}\n\n---\n\n${contentToDraft}` : contentToDraft);
@@ -602,7 +681,7 @@ const ProjectDetail = () => {
         draftContent: draftContent,
         modelConfig: {
           model: values.integration_model || modelConfig.defaultModel,
-          temperature: values.integration_temperature || 0.7
+          temperature: values.integration_temperature || 1
         }
       })
       setIntegrationResult(response.integratedScript)
@@ -706,12 +785,14 @@ const ProjectDetail = () => {
   }
 
   const handleSelectAll = () => {
-    const allOnPageIds = paginatedFiles.map(f => f.id);
+    const allFileIds = processedFiles.map(f => f.id);
     const newSelectedFileIds = new Set(selectedFileIds);
-    if (allOnPageSelected) {
-      allOnPageIds.forEach(id => newSelectedFileIds.delete(id));
+    if (allFilesSelected) {
+      // 取消全选
+      allFileIds.forEach(id => newSelectedFileIds.delete(id));
     } else {
-      allOnPageIds.forEach(id => newSelectedFileIds.add(id));
+      // 全选所有视频
+      allFileIds.forEach(id => newSelectedFileIds.add(id));
     }
     setSelectedFileIds(newSelectedFileIds);
   }
@@ -746,7 +827,7 @@ const ProjectDetail = () => {
           prompt: analysis_prompt,
           modelConfig: {
             model: model || 'gemini-1.5-flash',
-            temperature: temperature || 0.7,
+            temperature: temperature || 1,
             topK: top_k,
             topP: top_p,
             maxOutputTokens: max_output_tokens
@@ -952,9 +1033,9 @@ const ProjectDetail = () => {
     }
   }
 
-  const allOnPageSelected = useMemo(() => 
-    paginatedFiles.length > 0 && paginatedFiles.every(f => selectedFileIds.has(f.id)),
-    [paginatedFiles, selectedFileIds]
+  const allFilesSelected = useMemo(() => 
+    processedFiles.length > 0 && processedFiles.every(f => selectedFileIds.has(f.id)),
+    [processedFiles, selectedFileIds]
   );
 
   const handleSaveAnalysisPrompt = async (prompt) => {
@@ -1012,6 +1093,40 @@ const ProjectDetail = () => {
     }
   };
 
+  // 加载系统默认的视频解析Prompt
+  const handleLoadDefaultAnalysisPrompt = async () => {
+    try {
+      const response = await systemConfigAPI.getPublicPrompts();
+      if (response.success && response.data && response.data.video_analysis_prompt?.value) {
+        const defaultPrompt = response.data.video_analysis_prompt.value;
+        form.setFieldsValue({ analysis_prompt: defaultPrompt });
+        setUsingSystemDefaults(prev => ({ ...prev, analysis: true }));
+      } else {
+        message.warning('系统未配置默认的视频解析Prompt');
+      }
+    } catch (error) {
+      console.error('加载默认视频解析Prompt失败:', error);
+      throw error;
+    }
+  };
+
+  // 加载系统默认的剧本整合Prompt
+  const handleLoadDefaultIntegrationPrompt = async () => {
+    try {
+      const response = await systemConfigAPI.getPublicPrompts();
+      if (response.success && response.data && response.data.script_integration_prompt?.value) {
+        const defaultPrompt = response.data.script_integration_prompt.value;
+        form.setFieldsValue({ integrationPrompt: defaultPrompt });
+        setUsingSystemDefaults(prev => ({ ...prev, integration: true }));
+      } else {
+        message.warning('系统未配置默认的剧本整合Prompt');
+      }
+    } catch (error) {
+      console.error('加载默认剧本整合Prompt失败:', error);
+      throw error;
+    }
+  };
+
   if (loading) {
     return (
       <div style={{ 
@@ -1055,28 +1170,43 @@ const ProjectDetail = () => {
                   <Row gutter={24}>
                     {/* Left: Analysis Controls */}
                     <Col xs={24} lg={8}>
-                      <Form form={form} layout="vertical" onFinish={handleSavePrompts}>
-                        <Card title={<Title level={5} style={{margin:0}}>1. 批量上传视频</Title>}>
-                          <Dragger 
-                            name="file" 
-                            multiple={true} 
-                            beforeUpload={canEdit ? handleFileUpload : () => false} 
-                            showUploadList={false} 
-                            className="upload-dragger"
-                            disabled={!canEdit}
-                            style={!canEdit ? { backgroundColor: '#f5f5f5', cursor: 'not-allowed' } : {}}
+                      <div style={{ display: 'flex', flexDirection: 'column', height: '82vh' }}>
+                        <Form form={form} layout="vertical" onFinish={handleSavePrompts} style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                          <Card title={<Title level={5} style={{margin:0}}>1. 批量上传视频</Title>} style={{ marginBottom: 16, flexShrink: 0 }}>
+                          <Space direction="vertical" style={{ width: '100%' }} size="small">
+                            <Button 
+                              type="dashed" 
+                              icon={<UploadOutlined />} 
+                              style={{ width: '100%', height: '80px' }}
+                              disabled={!canEdit}
+                              onClick={() => {
+                                const input = document.createElement('input');
+                                input.type = 'file';
+                                input.multiple = true;
+                                input.accept = '.mp4,.mov,.avi,.mkv,.wmv';
+                                input.onchange = (e) => {
+                                  Array.from(e.target.files).forEach(file => {
+                                    if (canEdit) handleFileUpload(file);
+                                  });
+                                };
+                                input.click();
+                              }}
+                            >
+                              <div style={{ textAlign: 'center' }}>
+                                <div>{canEdit ? "点击上传视频文件" : "只读权限，无法上传"}</div>
+                                <div style={{ fontSize: '12px', color: '#999', marginTop: '4px' }}>
+                                  {canEdit ? "支持 MP4, MOV, AVI 等格式" : ""}
+                                </div>
+                              </div>
+                            </Button>
+                            </Space>
+                          </Card>
+                          <Card 
+                            title={<Title level={5} style={{margin:0}}>2. 模型配置</Title>} 
+                            style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
+                            bodyStyle={{ flex: 1, display: 'flex', flexDirection: 'column' }}
                           >
-                            <p className="ant-upload-drag-icon"><UploadOutlined /></p>
-                            <p className="ant-upload-text">
-                              {canEdit ? "选择文件或拖拽到此处" : "只读权限，无法上传"}
-                            </p>
-                            <p className="ant-upload-hint">
-                              {canEdit ? "支持 MP4, MOV, AVI 等格式" : ""}
-                            </p>
-                          </Dragger>
-                        </Card>
-                        <Card title={<Title level={5} style={{margin:0, marginTop: 16}}>2. 模型配置</Title>} style={{marginTop: 16}}>
-                          <Form.Item name="model" label="模型">
+                            <Form.Item name="model" label="模型">
                             <Select 
                               defaultValue={modelConfig.defaultModel} 
                               style={{ width: '100%' }} 
@@ -1091,28 +1221,57 @@ const ProjectDetail = () => {
                               ))}
                             </Select>
                           </Form.Item>
-                          <Form.Item name="temperature" label="Temperature">
-                            <Slider 
-                              defaultValue={0.7} 
-                              min={0} 
-                              max={2} 
-                              step={0.1} 
-                              disabled={!canEdit}
-                            />
+                          <Form.Item
+                            label="Temperature"
+                            style={{ marginBottom: 0 }}
+                            shouldUpdate={(prev, curr) => prev.temperature !== curr.temperature}
+                          >
+                            {({ getFieldValue, setFieldsValue }) => (
+                              <Row align="middle" gutter={8}>
+                                <Col flex="auto">
+                                  <Slider
+                                    min={0}
+                                    max={2}
+                                    step={0.1}
+                                    value={getFieldValue('temperature') ?? 1}
+                                    onChange={val => setFieldsValue({ temperature: val })}
+                                    disabled={!canEdit}
+                                  />
+                                </Col>
+                                <Col>
+                                  <InputNumber
+                                    min={0}
+                                    max={2}
+                                    step={0.1}
+                                    value={getFieldValue('temperature') ?? 1}
+                                    onChange={val => setFieldsValue({ temperature: val })}
+                                    disabled={!canEdit}
+                                    style={{ width: 60, marginLeft: 8 }}
+                                  />
+                                </Col>
+                              </Row>
+                            )}
                           </Form.Item>
-                          <Form.Item name="analysis_prompt" label="Prompt">
-                            <EditableTextArea
-                              value={form.getFieldValue('analysis_prompt')}
-                              onChange={value => form.setFieldsValue({ analysis_prompt: value })}
-                              onSave={canEdit ? handleSaveAnalysisPrompt : undefined}
-                              placeholder="例如：请将视频内容解析为剧本格式..."
-                              title="编辑内容解析Prompt"
-                              rows={5}
-                              disabled={!canEdit}
-                            />
+                          <Form.Item name="analysis_prompt" label="Prompt" style={{ marginBottom: 8, flex: 1, display: 'flex', flexDirection: 'column' }}>
+                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                              <EditableTextArea
+                                value={form.getFieldValue('analysis_prompt')}
+                                onChange={value => form.setFieldsValue({ analysis_prompt: value })}
+                                onSave={canEdit ? handleSaveAnalysisPrompt : undefined}
+                                onLoadDefault={canEdit ? handleLoadDefaultAnalysisPrompt : undefined}
+                                placeholder={usingSystemDefaults.analysis ? 
+                                  "当前使用系统默认Prompt（点击放大编辑按钮进行编辑）" : 
+                                  "例如：请将视频内容解析为剧本格式..."}
+                                title="编辑内容解析Prompt"
+                                rows={15}
+                                disabled={!canEdit}
+                                autoSize={true}
+                              />
+                            </div>
                           </Form.Item>
                         </Card>
                       </Form>
+                      </div>
                     </Col>
 
                     {/* Right: Video List */}
@@ -1120,12 +1279,14 @@ const ProjectDetail = () => {
                       <div className="video-processing-container">
                          <div className="video-list-header">
                             <Space>
-                              <Tooltip title={allOnPageSelected ? "取消全选" : "全选当页"}>
+                              <Tooltip title={allFilesSelected ? `取消全选（已选择${selectedFileIds.size}个视频）` : `选择全部视频（共${processedFiles.length}个）`}>
                                 <Button 
                                     icon={<BorderOutlined />} 
                                     onClick={handleSelectAll}
-                                    type={allOnPageSelected ? 'primary' : 'default'}
-                                />
+                                    type={allFilesSelected ? 'primary' : 'default'}
+                                >
+                                  {allFilesSelected ? `全选(${selectedFileIds.size})` : '全选'}
+                                </Button>
                               </Tooltip>
                               <Tooltip title={canEdit ? "批量解析" : "只读权限，无法解析"}>
                                 <Button 
@@ -1216,14 +1377,48 @@ const ProjectDetail = () => {
                               ))}
                             </Select>
                           </Form.Item>
-                          <Form.Item label="Temperature" name="integration_temperature">
-                             <Slider defaultValue={0.7} min={0} max={2} step={0.1} disabled={!canEdit} />
-                          </Form.Item>
+                          <Row align="middle" gutter={8}>
+                            <Col flex="auto">
+                              <Form.Item
+                                label="Temperature"
+                                name="integration_temperature"
+                                initialValue={1}
+                              >
+                                <Slider
+                                  min={0}
+                                  max={2}
+                                  step={0.1}
+                                  disabled={!canEdit}
+                                />
+                              </Form.Item>
+                            </Col>
+                            <Col>
+                              <Form.Item
+                                name="integration_temperature"
+                                initialValue={1}
+                                style={{ marginTop: 30 }}
+                              >
+                                <InputNumber
+                                  min={0}
+                                  max={2}
+                                  step={0.1}
+                                  disabled={!canEdit}  
+                                  style={{ width: 60, marginLeft: 8 }}
+                                />
+                              </Form.Item>
+                            </Col>
+                          </Row>
                           <Form.Item label="Prompt" name="integrationPrompt">
                              <EditableTextArea 
+                               value={form.getFieldValue('integrationPrompt')}
+                               onChange={value => form.setFieldsValue({ integrationPrompt: value })}
                                onSave={canEdit ? handleSaveIntegrationPrompt : undefined}
-                               placeholder="例如：请将以下内容整合成一个连贯的剧本..."
-                               rows={13}
+                               onLoadDefault={canEdit ? handleLoadDefaultIntegrationPrompt : undefined}
+                               placeholder={usingSystemDefaults.integration ? 
+                                 "当前使用系统默认Prompt（点击放大编辑按钮进行编辑）" : 
+                                 "例如：请将以下内容整合成一个连贯的剧本..."}
+                               title="编辑剧本整合Prompt"
+                               rows={12}
                                disabled={!canEdit}
                              />
                            </Form.Item>
@@ -1428,14 +1623,10 @@ const ProjectDetail = () => {
           width="70vw"
           bodyStyle={{ padding: 0, lineHeight: 0 }}
         >
-          <video
-            src={playingFile.file_path}
-            controls
+          <VideoPlayer 
+            file={playingFile}
             autoPlay
-            style={{ width: '100%', maxHeight: '80vh' }}
-          >
-            您的浏览器不支持 Video 标签。
-          </video>
+          />
         </Modal>
       )}
       

@@ -19,7 +19,21 @@ const getFullUrl = (req, filePath) => {
   if (!filePath) return null;
   if (filePath.startsWith('http')) return filePath;
   const normalizedPath = filePath.replace(/\\/g, '/');
-  return `${req.protocol}://${req.get('host')}/${normalizedPath}`;
+  
+  // 为视频文件生成可直接访问的静态文件路径
+  // 确保路径指向静态文件服务而不是下载接口
+  if (normalizedPath.startsWith('uploads/')) {
+    return `${req.protocol}://${req.get('host')}/${normalizedPath}`;
+  } else {
+    // 如果路径不是以uploads开头，添加uploads前缀
+    return `${req.protocol}://${req.get('host')}/uploads/${normalizedPath}`;
+  }
+};
+
+// 辅助函数：为视频流生成带token的专用URL
+const getVideoStreamUrl = (req, fileId) => {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  return `${req.protocol}://${req.get('host')}/api/files/${fileId}/stream?token=${token}`;
 };
 
 // 辅助函数：获取视频时长
@@ -149,6 +163,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
                 mime_type: mimetype,
                 file_size: size,
                 file_path: getFullUrl(req, relativePath),
+                stream_url: mimetype.startsWith('video/') ? getVideoStreamUrl(req, result.insertId) : null,
                 duration: duration,
                 thumbnail_path: getFullUrl(req, thumbnailPath),
                 uploaded_at: new Date().toISOString(),
@@ -220,7 +235,8 @@ router.delete('/:id', async (req, res) => {
         if (files.length === 0) {
             return res.status(404).json({ message: '文件不存在' });
         }
-        if (files[0].user_id !== userId) {
+        // 允许admin全局删除
+        if (files[0].user_id !== userId && req.user.role !== 'admin') {
             return res.status(403).json({ message: '无权操作此文件' });
         }
 
@@ -276,6 +292,7 @@ router.get('/project/:projectId', async (req, res) => {
         const processedFiles = files.map(file => ({
             ...file,
             file_path: getFullUrl(req, file.file_path),
+            stream_url: file.mime_type.startsWith('video/') ? getVideoStreamUrl(req, file.id) : null,
             thumbnail_path: getFullUrl(req, file.thumbnail_path)
         }));
 
@@ -332,8 +349,6 @@ router.put('/:id/analysis-result', async (req, res) => {
     const { result } = req.body;
     const { id: userId } = req.user;
 
-
-
     if (!result) {
         return res.status(400).json({ message: '解析结果不能为空' });
     }
@@ -351,7 +366,7 @@ router.put('/:id/analysis-result', async (req, res) => {
         if (files.length === 0) {
             return res.status(404).json({ message: '文件不存在' });
         }
-        if (files[0].user_id !== userId) {
+        if (files[0].user_id !== userId && req.user.role !== 'admin') {
             return res.status(403).json({ message: '无权修改此文件' });
         }
 
@@ -385,6 +400,98 @@ router.put('/:id/analysis-result', async (req, res) => {
     } catch (error) {
         console.error('更新解析结果失败:', error);
         res.status(500).json({ message: '服务器内部错误' });
+    }
+});
+
+// 视频流服务 - 支持通过URL参数或Authorization头部认证
+router.get('/:fileId/stream', async (req, res) => {
+    try {
+        const { fileId } = req.params;
+        const range = req.headers.range;
+        
+        // 从URL参数或Authorization头部获取token
+        const token = req.query.token || req.headers.authorization?.replace('Bearer ', '');
+        
+        if (!token) {
+            return res.status(401).json({ message: '缺少访问令牌' });
+        }
+
+        // 验证token
+        const jwt = require('jsonwebtoken');
+        let user;
+        try {
+            user = jwt.verify(token, process.env.JWT_SECRET);
+        } catch (error) {
+            return res.status(401).json({ message: '无效的访问令牌' });
+        }
+
+        // 获取文件信息并验证权限
+        const [files] = await pool.execute(`
+            SELECT f.*, p.user_id 
+            FROM files f 
+            JOIN projects p ON f.project_id = p.id 
+            WHERE f.id = ?
+        `, [fileId]);
+
+        if (files.length === 0) {
+            return res.status(404).json({ message: '文件不存在' });
+        }
+
+        const file = files[0];
+        
+        // 验证权限 - 允许项目所有者和管理员访问
+        if (file.user_id !== user.id && user.role !== 'admin') {
+            return res.status(403).json({ message: '没有权限访问此文件' });
+        }
+
+        if (!fs.existsSync(file.file_path)) {
+            return res.status(404).json({ message: '文件不存在' });
+        }
+
+        // 只处理视频文件
+        if (!file.mime_type.startsWith('video/')) {
+            return res.status(400).json({ message: '此接口仅支持视频文件' });
+        }
+
+        const fileSize = file.file_size;
+
+        if (range) {
+            // 处理Range请求，支持视频的seeking
+            const parts = range.replace(/bytes=/, "").split("-");
+            const start = parseInt(parts[0], 10);
+            const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+
+            if (start >= fileSize) {
+                res.status(416).send('Requested range not satisfiable\n' + start + ' >= ' + fileSize);
+                return;
+            }
+
+            const chunksize = (end - start) + 1;
+            const fileStream = fs.createReadStream(file.file_path, {start, end});
+            const head = {
+                'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+                'Accept-Ranges': 'bytes',
+                'Content-Length': chunksize,
+                'Content-Type': file.mime_type,
+                'Cache-Control': 'public, max-age=3600',
+            };
+
+            res.writeHead(206, head);
+            fileStream.pipe(res);
+        } else {
+            // 完整文件响应
+            const head = {
+                'Content-Length': fileSize,
+                'Content-Type': file.mime_type,
+                'Accept-Ranges': 'bytes',
+                'Cache-Control': 'public, max-age=3600',
+            };
+            res.writeHead(200, head);
+            fs.createReadStream(file.file_path).pipe(res);
+        }
+    } catch (error) {
+        console.error('视频流服务错误:', error);
+        res.status(500).json({ message: '视频流服务失败' });
     }
 });
 

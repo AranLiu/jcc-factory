@@ -1,18 +1,57 @@
 {
   "name": "jcc-factory",
   "version": "1.0.0",
-  "description": "剧绕乐 - 短剧本工坊 AI视频/小说解析平台",
+  "description": "剧柴柴 - 短剧本工坊 AI视频/小说解析平台",
   "private": true,
+  "author": "JCC Factory Team",
+  "license": "MIT",
+  "keywords": [
+    "ai",
+    "video-analysis",
+    "script",
+    "short-drama",
+    "gemini"
+  ],
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
+  },
   "scripts": {
     "start": "npm run dev",
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:server": "cd server && npm run dev",
     "dev:client": "cd client && npm run dev",
     "build": "cd client && npm run build",
+    "build:server": "cd server && npm run build",
     "install:all": "npm install && cd server && npm install && cd ../client && npm install",
-    "setup:admin": "node scripts/setup-admin.js"
+    "setup:admin": "node scripts/setup-admin.js",
+    "create:user": "node scripts/create-user.js",
+    "setup:db": "mysql -u root -p < server/database/init.sql",
+    "setup:env": "copy server\\env.example server\\.env",
+    "setup:project": "npm run install:all && npm run setup:env && echo '请配置 server/.env 文件后运行 npm run setup:db 和 npm run setup:admin'",
+    "clean": "rmdir /s /q node_modules server\\node_modules client\\node_modules 2>nul || echo 清理完成",
+    "clean:build": "rmdir /s /q client\\dist server\\dist 2>nul || echo 构建文件清理完成",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "echo \"Linting not configured yet\"",
+    "audit:all": "npm audit && cd server && npm audit && cd ../client && npm audit",
+    "update:all": "npm update && cd server && npm update && cd ../client && npm update"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
-  }
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "dotenv": "^16.5.0",
+    "html-to-docx": "^1.8.0",
+    "mammoth": "^1.9.1",
+    "mysql2": "^3.14.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/jcc-factory.git"
+  },
+  "bugs": {
+    "url": "https://github.com/your-username/jcc-factory/issues"
+  },
+  "homepage": "https://github.com/your-username/jcc-factory#readme"
 }

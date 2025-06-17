@@ -1,191 +1,221 @@
-# 剧柴柴 - 短剧本工坊
+# JCC Factory - 视频内容创作工厂
 
-一个基于AI的视频/小说解析平台，支持批量上传文件并使用Google Gemini模型进行智能分析。
+一个基于AI的视频内容分析与整合平台，支持视频上传、AI分析、剧本整合等功能。
 
 ## 功能特性
 
-- 🎬 **短剧Pro**: 支持视频文件上传和AI分析
-- 📚 **小说Pro**: 支持文本文档上传和AI分析  
-- 🤖 **AI模型**: 集成Google Gemini进行内容解析
-- 📁 **项目管理**: 完整的项目创建、管理、删除功能
-- 🔄 **实时处理**: 异步AI分析任务，实时状态更新
-- 🎥 **在线播放**: 支持视频文件在线预览播放
-- 👥 **用户管理**: 简单的认证系统，内部使用
-- ⚙️ **系统配置**: 图形化配置界面，支持AI模型和代理设置
+### 🎥 视频管理
+- **视频上传**: 支持多种视频格式（MP4, AVI, MOV, WMV, MKV）
+- **在线播放**: 支持视频在线播放，带有认证和流媒体功能
+- **视频预览**: 自动生成视频缩略图
+- **视频信息**: 显示视频时长、文件大小等详细信息
 
-## 技术栈
+### 🎬 视频播放增强功能
+- **流媒体播放**: 支持HTTP Range请求，实现大文件的流式播放
+- **认证访问**: 基于JWT token的安全访问控制
+- **智能降级**: 自动在流媒体接口和静态文件之间切换
+- **错误处理**: 完善的错误提示和重试机制
+- **多格式支持**: 支持浏览器兼容的各种视频格式
 
-### 后端
-- **Node.js** + Express.js
-- **MySQL** 数据库
-- **Google Gemini AI** 模型
-- **JWT** 身份认证
-- **Multer** 文件上传
+### 🤖 AI内容分析
+- **视频分析**: 使用Google Gemini模型分析视频内容
+- **自定义Prompt**: 支持自定义分析提示词
+- **批量处理**: 支持多个视频文件的批量分析
+- **结果编辑**: 支持手动编辑和完善AI分析结果
 
-### 前端  
-- **React 18** + Vite
-- **Ant Design** UI组件库
-- **React Router** 路由管理
-- **Axios** HTTP客户端
+### 📝 剧本整合
+- **智能整合**: 基于AI分析结果生成完整剧本
+- **模板支持**: 支持自定义整合模板
+- **导出功能**: 支持剧本导出和下载
 
-## 环境要求
+### 👥 用户管理
+- **多用户支持**: 支持多用户注册和登录
+- **权限控制**: 基于角色的访问控制
+- **项目隔离**: 用户数据完全隔离
 
+## 技术架构
+
+### 前端技术栈
+- **React 18**: 现代React框架
+- **Ant Design**: 企业级UI组件库
+- **Vite**: 高性能构建工具
+- **Axios**: HTTP客户端
+
+### 后端技术栈
+- **Node.js**: 服务端运行环境
+- **Express.js**: Web应用框架
+- **MySQL**: 关系型数据库
+- **JWT**: 身份认证
+- **Multer**: 文件上传处理
+- **FFmpeg**: 视频处理
+
+### AI服务
+- **Google Gemini**: AI内容分析
+- **Python服务**: AI接口封装
+
+## 安装与部署
+
+### 环境要求
 - Node.js 16+
-- MySQL 5.7+
-- Google Gemini API密钥
+- MySQL 8.0+
+- Python 3.8+
+- FFmpeg
 
-## 快速开始
+### 快速启动
 
-### 1. 克隆项目
+1. **克隆项目**
 ```bash
-git clone https://github.com/your-username/jcc-factory.git
+git clone <repository-url>
 cd jcc-factory
 ```
 
-### 2. 安装依赖
+2. **安装依赖**
 ```bash
-npm run install:all
+# 安装后端依赖
+cd server
+npm install
+
+# 安装前端依赖
+cd ../client
+npm install
+
+# 安装Python依赖
+cd ../server/python_services
+pip install -r requirements.txt
 ```
 
-### 3. 数据库配置
-
-#### 创建数据库
+3. **环境配置**
 ```bash
-# 登录MySQL
-mysql -u root -p
-
-# 执行初始化脚本
-source server/database/init.sql
-```
-
-#### 配置环境变量
-```bash
-# 复制环境变量配置文件
+# 复制环境变量模板
 cp server/env.example server/.env
 
-# 编辑配置文件
+# 编辑环境变量
 nano server/.env
 ```
 
-在 `server/.env` 文件中配置以下信息：
+4. **数据库初始化**
+```bash
+# 初始化数据库
+cd server
+node scripts/migrate-database.js
+
+# 创建管理员用户
+node scripts/setup-admin.js
+```
+
+5. **启动服务**
+```bash
+# 启动后端服务
+cd server
+npm start
+
+# 启动前端服务
+cd ../client
+npm run dev
+```
+
+## 视频播放功能详解
+
+### 播放机制
+1. **优先级策略**: 优先使用认证流媒体接口，失败时降级到静态文件
+2. **认证方式**: 通过URL参数传递JWT token，解决video标签无法携带认证头的问题
+3. **流媒体支持**: 支持HTTP Range请求，实现视频的seeking和渐进式加载
+4. **缓存优化**: 适当的缓存策略提升播放性能
+
+### 接口说明
+- `GET /api/files/:fileId/stream`: 认证流媒体接口
+- `GET /api/files/:fileId/download`: 文件下载接口
+- `GET /uploads/*`: 静态文件服务
+
+### 错误处理
+- 网络错误自动重试
+- 格式不支持时提供下载选项
+- 权限错误时显示详细提示
+- 完善的错误日志记录
+
+## 配置说明
+
+### 环境变量
 ```env
 # 数据库配置
 DB_HOST=localhost
-DB_PORT=3306
 DB_USER=root
-DB_PASSWORD=your_mysql_password
+DB_PASSWORD=password
 DB_NAME=jcc_factory
 
-# JWT密钥（请生成一个强密钥）
-JWT_SECRET=your_very_strong_jwt_secret_key_here
-
-# Google Gemini API密钥
-GEMINI_API_KEY=your_gemini_api_key_here
-
-# 服务器配置
-PORT=3001
-NODE_ENV=development
+# JWT配置
+JWT_SECRET=your-secret-key
 
 # 文件上传配置
 UPLOAD_PATH=./uploads
 MAX_FILE_SIZE=500MB
+
+# AI服务配置
+GEMINI_API_KEY=your-gemini-api-key
+GEMINI_DEFAULT_MODEL=gemini-1.5-flash
+
+# 服务器配置
+PORT=3001
+NODE_ENV=development
 ```
 
-### 4. 创建管理员用户
+### 支持的视频格式
+- MP4 (推荐)
+- AVI
+- MOV
+- WMV
+- MKV
 
-```bash
-npm run setup:admin
-```
+### 性能优化建议
+1. **视频格式**: 推荐使用MP4格式，兼容性最好
+2. **文件大小**: 建议单个文件不超过500MB
+3. **网络配置**: 配置适当的CDN加速
+4. **缓存策略**: 启用浏览器缓存和服务端缓存
 
-### 5. 启动服务
+## 故障排除
 
-```bash
-# 开发模式启动（同时启动前后端）
-npm run dev
+### 视频无法播放
+1. 检查文件格式是否支持
+2. 验证网络连接
+3. 查看浏览器控制台错误信息
+4. 确认用户权限
 
-# 或者分别启动
-npm run dev:server  # 启动后端 (http://localhost:3001)
-npm run dev:client  # 启动前端 (http://localhost:5173)
-```
+### 上传失败
+1. 检查文件大小限制
+2. 验证文件格式
+3. 确认磁盘空间
+4. 检查服务器日志
 
-### 6. 访问应用
+## 更新日志
 
-打开浏览器访问 `http://localhost:5173`
+### v1.1.0 (2024-01-XX)
+- ✨ 新增视频在线播放功能
+- 🔒 增强访问权限控制
+- 🎬 支持HTTP Range请求
+- 📱 改进移动端播放体验
+- 🐛 修复多个已知问题
 
-默认登录信息：
-- 用户名: `admin`
-- 密码: `admin123`
+### v1.0.0 (2024-01-XX)
+- 🎉 初始版本发布
+- 📹 基础视频上传功能
+- 🤖 AI内容分析
+- 📝 剧本整合功能
 
-### 7. 系统配置 ⚙️
+## 贡献指南
 
-登录后，管理员用户可以通过以下方式进行系统配置：
+欢迎提交Pull Request和Issue。请确保：
 
-1. **进入配置页面**
-   - 点击右上角头像菜单
-   - 选择"系统配置"（仅管理员可见）
-
-2. **AI模型配置**
-   - **API密钥**: 设置Google Gemini API密钥
-   - **默认模型**: 选择默认使用的AI模型
-   - **可用模型**: 管理可用模型列表，支持添加/删除
-   - **连接测试**: 一键测试API连接状态
-
-3. **代理配置**（可选）
-   - **启用开关**: 一键开启/关闭代理
-   - **HTTP代理**: 设置HTTP代理服务器地址
-   - **HTTPS代理**: 设置HTTPS代理服务器地址
-   - **排除地址**: 设置不使用代理的地址列表
-   - **连接测试**: 验证代理配置是否正常
-
-4. **配置特性**
-   - ✅ **实时生效**: 配置修改后立即生效，无需重启
-   - ✅ **状态监控**: 实时显示各组件连接状态
-   - ✅ **一键测试**: 快速验证配置正确性
-   - ✅ **热更新**: 支持不停机配置更新
-
-## 项目结构
-
-```
-jcc-factory/
-├── client/                 # 前端代码 (React + Vite)
-│   ├── src/
-│   │   ├── components/     # React组件
-│   │   ├── pages/         # 页面组件
-│   │   ├── services/      # API服务
-│   │   └── utils/         # 工具函数
-│   └── package.json
-├── server/                 # 后端代码 (Node.js + Express)
-│   ├── routes/            # API路由
-│   ├── services/          # 业务逻辑
-│   ├── config/            # 配置文件
-│   ├── database/          # 数据库脚本
-│   └── package.json
-├── netlify/               # Netlify函数 (Gemini代理)
-│   └── functions/
-├── scripts/               # 工具脚本
-└── package.json          # 项目管理
-```
-
-## 部署
-
-### 开发环境
-```bash
-npm run dev
-```
-
-### 生产环境
-```bash
-# 构建前端
-npm run build
-
-# 启动后端
-cd server && npm start
-```
+1. 代码符合项目规范
+2. 包含适当的测试
+3. 更新相关文档
+4. 提供详细的变更说明
 
 ## 许可证
 
 MIT License
 
-## 贡献
+## 联系方式
 
-欢迎提交 Issue 和 Pull Request！ 
+如有问题或建议，请通过以下方式联系：
+- 提交Issue
+- 发送邮件至: [your-email@example.com]

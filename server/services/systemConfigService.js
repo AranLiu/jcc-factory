@@ -1,6 +1,7 @@
 const { pool } = require('../config/database');
-const proxyConfig = require('../config/proxyConfig');
 const PythonGeminiService = require('./pythonGeminiService');
+const { spawn } = require('child_process');
+const path = require('path');
 
 class SystemConfigService {
     constructor() {
@@ -182,88 +183,18 @@ class SystemConfigService {
     }
 
     /**
-     * 测试代理连接
-     */
-    async testProxyConnection() {
-        try {
-            const proxyEnabled = await this.getConfig('proxy_enabled');
-            
-            if (!proxyEnabled) {
-                return {
-                    success: true,
-                    message: '代理未启用',
-                    details: 'Proxy is disabled'
-                };
-            }
-
-            const httpProxy = await this.getConfig('proxy_http');
-            const httpsProxy = await this.getConfig('proxy_https');
-
-            if (!httpProxy && !httpsProxy) {
-                return {
-                    success: false,
-                    message: '未配置代理服务器',
-                    details: 'No proxy server configured'
-                };
-            }
-
-            // 临时设置代理环境变量进行测试
-            const originalHttpProxy = process.env.HTTP_PROXY;
-            const originalHttpsProxy = process.env.HTTPS_PROXY;
-            
-            if (httpProxy) process.env.HTTP_PROXY = httpProxy;
-            if (httpsProxy) process.env.HTTPS_PROXY = httpsProxy;
-
-            try {
-                const pythonService = new PythonGeminiService();
-                const startTime = Date.now();
-                const result = await pythonService.testConnection();
-                const responseTime = Date.now() - startTime;
-
-                return {
-                    success: result.success,
-                    message: result.success ? '代理连接正常' : '代理连接失败',
-                    details: result.message || result.error,
-                    responseTime
-                };
-            } finally {
-                // 恢复原始代理设置
-                if (originalHttpProxy) {
-                    process.env.HTTP_PROXY = originalHttpProxy;
-                } else {
-                    delete process.env.HTTP_PROXY;
-                }
-                
-                if (originalHttpsProxy) {
-                    process.env.HTTPS_PROXY = originalHttpsProxy;
-                } else {
-                    delete process.env.HTTPS_PROXY;
-                }
-            }
-        } catch (error) {
-            console.error('测试代理连接失败:', error);
-            return {
-                success: false,
-                message: '代理测试异常',
-                details: error.message
-            };
-        }
-    }
-
-    /**
      * 获取当前连接状态
      */
     async getConnectionStatus() {
         try {
-            const [geminiTest, proxyTest] = await Promise.all([
-                this.testGeminiConnection(),
-                this.testProxyConnection()
+            const [geminiTest] = await Promise.all([
+                this.testGeminiConnection()
             ]);
 
             return {
                 gemini: geminiTest,
-                proxy: proxyTest,
-                overall: geminiTest.success && proxyTest.success
+                proxy: { success: true, message: '状态检查失败' },
+                overall: geminiTest.success
             };
         } catch (error) {
             console.error('获取连接状态失败:', error);
@@ -297,30 +228,6 @@ class SystemConfigService {
                 process.env.GEMINI_AVAILABLE_MODELS = configs.gemini_available_models.value.join(',');
             }
 
-            // 应用代理配置
-            if (configs.proxy_enabled?.value) {
-                if (configs.proxy_http?.value) {
-                    process.env.HTTP_PROXY = configs.proxy_http.value;
-                    process.env.http_proxy = configs.proxy_http.value;
-                }
-                if (configs.proxy_https?.value) {
-                    process.env.HTTPS_PROXY = configs.proxy_https.value;
-                    process.env.https_proxy = configs.proxy_https.value;
-                }
-                if (configs.proxy_no_proxy?.value) {
-                    process.env.NO_PROXY = configs.proxy_no_proxy.value;
-                    process.env.no_proxy = configs.proxy_no_proxy.value;
-                }
-            } else {
-                // 如果禁用代理，清除环境变量
-                delete process.env.HTTP_PROXY;
-                delete process.env.http_proxy;
-                delete process.env.HTTPS_PROXY;
-                delete process.env.https_proxy;
-                delete process.env.NO_PROXY;
-                delete process.env.no_proxy;
-            }
-
             console.log('✅ 系统配置已应用到运行环境');
             return true;
         } catch (error) {
@@ -338,79 +245,35 @@ class SystemConfigService {
     }
 
     /**
-     * 获取推荐的代理URL
+     * 测试代理连通性
      */
-    async getRecommendedProxyUrls() {
-        try {
-            const configStr = await this.getConfig('proxy_service_urls');
-            if (configStr) {
-                return JSON.parse(configStr);
-            }
-        } catch (error) {
-            console.error('获取代理URLs配置失败:', error);
-        }
-        
-        // 返回默认配置
-        return {
-            local: 'http://localhost:8080',
-            netlify: '',
-            vercel: '',
-            cloudflare: '',
-            custom: ''
-        };
-    }
-
-    /**
-     * 设置代理服务配置
-     */
-    async setProxyConfig(config) {
-        const validConfig = {
-            enabled: Boolean(config.enabled),
-            provider: config.provider || 'local', // local, netlify, vercel, cloudflare
-            customUrl: config.customUrl || '',
-            fallbackToLocal: Boolean(config.fallbackToLocal)
-        };
-
-        await this.updateConfig('proxy_config', JSON.stringify(validConfig), 1);
-        
-        // 更新环境变量
-        if (validConfig.enabled) {
-            const proxyUrls = await this.getRecommendedProxyUrls();
-            const proxyUrl = validConfig.provider === 'custom' 
-                ? validConfig.customUrl 
-                : proxyUrls[validConfig.provider];
-                
-            if (proxyUrl) {
-                process.env.GEMINI_PROXY_URL = proxyUrl;
-                console.log(`🌐 代理服务已设置为: ${proxyUrl}`);
-            }
-        } else {
-            delete process.env.GEMINI_PROXY_URL;
-            console.log('🌐 代理服务已禁用');
-        }
-        
-        return validConfig;
-    }
-
-    /**
-     * 获取代理服务配置
-     */
-    async getProxyConfig() {
-        try {
-            const configStr = await this.getConfig('proxy_config');
-            if (configStr) {
-                return JSON.parse(configStr);
-            }
-        } catch (error) {
-            console.error('解析代理配置失败:', error);
-        }
-        
-        return {
-            enabled: false,
-            provider: 'local',
-            customUrl: '',
-            fallbackToLocal: true
-        };
+    async testProxyConnection() {
+        return new Promise((resolve, reject) => {
+            const pythonCmd = process.env.PYTHON_COMMAND || 'python';
+            const proxyUrl = process.env.GEMINI_PROXY_URL || 'http://localhost:8080';
+            const args = [pythonCmd, 'test', '连接测试', `proxy=${proxyUrl}`];
+            
+            const proc = spawn(pythonCmd, args, { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
+            let output = '';
+            let errorOutput = '';
+            proc.stdout.on('data', (data) => { output += data; });
+            proc.stderr.on('data', (data) => { errorOutput += data; });
+            proc.on('close', (code) => {
+                if (code === 0) {
+                    try {
+                        const result = JSON.parse(output.trim().split('\n').pop());
+                        resolve(result);
+                    } catch (e) {
+                        resolve({ success: false, message: 'JSON解析失败', error: e.message, raw: output, stderr: errorOutput });
+                    }
+                } else {
+                    resolve({ success: false, message: 'Python进程异常', code, stderr: errorOutput, raw: output });
+                }
+            });
+            proc.on('error', (err) => {
+                resolve({ success: false, message: 'Python进程启动失败', error: err.message });
+            });
+        });
     }
 }
 

@@ -273,7 +273,8 @@ router.get('/task/:taskId', async (req, res) => {
         }
 
         const task = tasks[0];
-        if (task.user_id !== req.user.id) {
+        if (task.user_id !== req.user.id && req.user.role !== 'admin') {
+            console.warn(`[AI任务权限拒绝] user_id=${req.user.id}, taskId=${taskId}, task_owner=${task.user_id}`);
             return res.status(403).json({ message: '没有权限访问此任务' });
         }
 

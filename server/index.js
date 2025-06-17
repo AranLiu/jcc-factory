@@ -25,10 +25,36 @@ if (!fs.existsSync(uploadDir)) {
 }
 
 // 中间件配置
-app.use(helmet());
+app.use(helmet({
+    crossOriginEmbedderPolicy: false,
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            mediaSrc: ["'self'", "blob:", "data:", "http://localhost:3001"],
+            connectSrc: ["'self'", "http://localhost:3001"],
+            imgSrc: ["'self'", "data:", "blob:"],
+        },
+    },
+}));
 app.use(cors({
-    origin: process.env.NODE_ENV === 'production' ? 'http://your-domain.com' : 'http://localhost:5173',
-    credentials: true
+    origin: [
+        'http://localhost:5173',
+        'http://localhost:5174', 
+        'http://localhost:5175',
+        'http://localhost:5176',
+        'http://localhost:5177',
+        'http://localhost:5178',
+        'http://127.0.0.1:5173',
+        'http://127.0.0.1:5174',
+        'http://127.0.0.1:5175',
+        'http://127.0.0.1:5176',
+        'http://127.0.0.1:5177',
+        'http://127.0.0.1:5178'
+    ],
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'HEAD'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Range', 'Accept', 'Accept-Ranges'],
+    exposedHeaders: ['Content-Range', 'Accept-Ranges', 'Content-Length', 'Content-Type']
 }));
 
 // 限流配置
@@ -43,7 +69,47 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // 静态文件服务
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
+    setHeaders: (res, filePath) => {
+        // 设置视频文件的正确MIME类型和缓存策略
+        if (filePath.endsWith('.mp4')) {
+            res.setHeader('Content-Type', 'video/mp4');
+        } else if (filePath.endsWith('.avi')) {
+            res.setHeader('Content-Type', 'video/x-msvideo');
+        } else if (filePath.endsWith('.mov')) {
+            res.setHeader('Content-Type', 'video/quicktime');
+        } else if (filePath.endsWith('.wmv')) {
+            res.setHeader('Content-Type', 'video/x-ms-wmv');
+        } else if (filePath.endsWith('.mkv')) {
+            res.setHeader('Content-Type', 'video/x-matroska');
+        } else if (filePath.endsWith('.png')) {
+            res.setHeader('Content-Type', 'image/png');
+        } else if (filePath.endsWith('.jpg') || filePath.endsWith('.jpeg')) {
+            res.setHeader('Content-Type', 'image/jpeg');
+        } else if (filePath.endsWith('.gif')) {
+            res.setHeader('Content-Type', 'image/gif');
+        } else if (filePath.endsWith('.webp')) {
+            res.setHeader('Content-Type', 'image/webp');
+        }
+        
+        // 支持Range请求
+        res.setHeader('Accept-Ranges', 'bytes');
+        
+        // 设置CORS头 - 允许所有来源访问静态文件
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type, Authorization');
+        res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Accept-Ranges, Content-Length, Content-Type');
+        
+        // 缓存策略
+        res.setHeader('Cache-Control', 'public, max-age=3600');
+        
+        // 确保图片能够跨域显示
+        if (filePath.match(/\.(png|jpg|jpeg|gif|webp)$/i)) {
+            res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+        }
+    }
+}));
 app.use('/knowledge_base_files', express.static(path.join(process.cwd(), 'knowledge_base_files')));
 
 // 路由
@@ -55,7 +121,6 @@ app.use('/api/knowledge-base', require('./routes/knowledgeBase'));
 app.use('/api/tags', require('./routes/tags'));
 app.use('/api/documents', require('./routes/documents'));
 app.use('/api/system-config', require('./routes/systemConfig'));
-app.use('/api/gemini-proxy', require('./routes/geminiProxy'));
 
 // 健康检查
 app.get('/api/health', (req, res) => {
@@ -92,20 +157,6 @@ async function startServer() {
             console.log('✅ 系统配置加载完成');
         } catch (error) {
             console.warn('⚠️ 系统配置加载失败，使用环境变量默认值:', error.message);
-        }
-        
-        // 启动Gemini代理服务
-        try {
-            const geminiProxyService = require('./services/geminiProxyService');
-            const proxyStarted = await geminiProxyService.startProxy();
-            if (proxyStarted) {
-                console.log('✅ Gemini代理服务启动成功 (端口: 8080)');
-            } else {
-                console.warn('⚠️ Gemini代理服务启动失败或跳过');
-            }
-        } catch (error) {
-            console.warn('⚠️ Gemini代理服务启动异常:', error.message);
-            // 不要让代理服务的错误阻止主服务器启动
         }
         
         app.listen(PORT, () => {

@@ -1,6 +1,8 @@
+// =============================
+// Gemini服务唯一实现：所有AI相关业务均应通过本文件调用Python后端
+// =============================
 const { spawn } = require('child_process');
 const path = require('path');
-const proxyConfig = require('../config/proxyConfig');
 require('dotenv').config();
 
 class PythonGeminiService {
@@ -19,17 +21,6 @@ class PythonGeminiService {
         console.log(`   Python命令: ${this.pythonCommand}`);
         console.log('   可用模型:', this.availableModels);
         console.log('   默认模型:', this.defaultModel);
-        
-        // 显示代理配置状态
-        const proxyStatus = proxyConfig.getStatus();
-        if (proxyStatus.enabled) {
-            console.log('🔗 代理配置已启用:');
-            if (proxyStatus.httpProxy) console.log(`   HTTP代理: ${proxyStatus.httpProxy}`);
-            if (proxyStatus.httpsProxy) console.log(`   HTTPS代理: ${proxyStatus.httpsProxy}`);
-            if (proxyStatus.socksProxy) console.log(`   SOCKS代理: ${proxyStatus.socksProxy}`);
-        } else {
-            console.log('🔗 未配置代理，使用直连模式');
-        }
     }
 
     async callPythonService(command, args = []) {
@@ -38,22 +29,7 @@ class PythonGeminiService {
             
             console.log(`🔄 执行Python命令: ${this.pythonCommand} ${fullArgs.join(' ')}`);
             
-            // 准备环境变量，包含代理配置
-            const pythonEnv = {
-                ...process.env,
-                GEMINI_API_KEY: process.env.GEMINI_API_KEY,
-                PYTHONIOENCODING: 'utf-8',
-                PYTHONLEGACYWINDOWSSTDIO: '0',
-                ...proxyConfig.getPythonProxyEnv()
-            };
-            
-            // 如果启用了调试模式，添加调试环境变量
-            if (process.env.GEMINI_DEBUG === 'true') {
-                pythonEnv.GEMINI_DEBUG = 'true';
-            }
-            
             const pythonProcess = spawn(this.pythonCommand, fullArgs, {
-                env: pythonEnv,
                 stdio: ['pipe', 'pipe', 'pipe'],
                 encoding: 'utf8'
             });

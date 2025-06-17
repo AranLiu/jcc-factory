@@ -5,7 +5,7 @@ import os
 import sys
 import json
 import time
-import google.generativeai as genai
+from google import genai
 
 # 设置UTF-8编码输出，解决Windows控制台显示问题
 if sys.platform.startswith('win'):
@@ -18,9 +18,7 @@ class SimpleGeminiService:
         self.api_key = os.getenv('GEMINI_API_KEY')
         if not self.api_key:
             raise ValueError("GEMINI_API_KEY environment variable is required")
-        
-        # 配置Gemini API
-        genai.configure(api_key=self.api_key)
+        self.client = genai.Client(api_key=self.api_key)
 
     def process_text(self, text, model="gemini-1.5-flash", temperature=0.7):
         """处理文本请求"""
@@ -34,16 +32,15 @@ class SimpleGeminiService:
             
             gemini_model = model_mapping.get(model, model)
             
-            # 创建模型实例
-            model_instance = genai.GenerativeModel(gemini_model)
-            
             # 生成内容
-            response = model_instance.generate_content(
-                text,
-                generation_config=genai.types.GenerationConfig(
-                    temperature=temperature,
-                    max_output_tokens=4000,
-                )
+            config = genai.types.GenerateContentConfig(
+                temperature=temperature,
+                max_output_tokens=4000
+            )
+            response = self.client.models.generate_content(
+                model=gemini_model,
+                contents=text,
+                config=config
             )
             
             return {
@@ -65,8 +62,15 @@ class SimpleGeminiService:
         try:
             start_time = time.time()
             
-            model = genai.GenerativeModel('gemini-1.5-flash')
-            response = model.generate_content("请回复：连接测试成功")
+            config = genai.types.GenerateContentConfig(
+                temperature=0.7,
+                max_output_tokens=100
+            )
+            response = self.client.models.generate_content(
+                model='gemini-1.5-flash',
+                contents="请回复：连接测试成功",
+                config=config
+            )
             
             end_time = time.time()
             response_time = (end_time - start_time) * 1000
