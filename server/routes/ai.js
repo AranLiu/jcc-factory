@@ -86,8 +86,8 @@ router.post('/analyze', async (req, res) => {
 
         // 验证项目权限
         let sql, params;
-        if (userPermission === 'global') {
-            // 全局权限：可以对任何项目创建任务
+        if (userPermission === 'global' || req.user.role === 'admin') {
+            // 管理员或全局权限：可以对任何项目创建任务
             sql = 'SELECT id, type FROM projects WHERE id = ?';
             params = [projectId];
         } else {
@@ -273,8 +273,11 @@ router.get('/task/:taskId', async (req, res) => {
         }
 
         const task = tasks[0];
-        if (task.user_id !== req.user.id && req.user.role !== 'admin') {
-            console.warn(`[AI任务权限拒绝] user_id=${req.user.id}, taskId=${taskId}, task_owner=${task.user_id}`);
+        const userPermission = req.user.permission || 'personal';
+        
+        // 权限检查：管理员、全局权限用户或项目所有者可以访问
+        if (task.user_id !== req.user.id && req.user.role !== 'admin' && userPermission !== 'global') {
+            console.warn(`[AI任务权限拒绝] user_id=${req.user.id}, taskId=${taskId}, task_owner=${task.user_id}, role=${req.user.role}, permission=${userPermission}`);
             return res.status(403).json({ message: '没有权限访问此任务' });
         }
 
@@ -298,11 +301,22 @@ router.post('/integrate-script', authenticateToken, async (req, res) => {
             return res.status(400).json({ message: '项目ID、整合提示词和草稿内容不能为空' });
         }
 
-        // 验证项目所有权
-        const [projects] = await pool.execute(
-            'SELECT id FROM projects WHERE id = ? AND user_id = ?',
-            [projectId, req.user.id]
-        );
+        // 权限检查（NULL视为personal权限）
+        const userPermission = req.user.permission || 'personal';
+
+        // 验证项目权限
+        let sql, params;
+        if (userPermission === 'global' || req.user.role === 'admin') {
+            // 管理员或全局权限：可以对任何项目进行整合
+            sql = 'SELECT id FROM projects WHERE id = ?';
+            params = [projectId];
+        } else {
+            // personal和readonly_global权限：只能对自己的项目进行整合
+            sql = 'SELECT id FROM projects WHERE id = ? AND user_id = ?';
+            params = [projectId, req.user.id];
+        }
+
+        const [projects] = await pool.execute(sql, params);
 
         if (projects.length === 0) {
             return res.status(403).json({ message: '无权访问此项目' });

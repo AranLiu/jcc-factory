@@ -45,8 +45,8 @@ router.get('/', async (req, res) => {
         // 根据用户权限决定查询范围（NULL视为personal权限）
         const userPermission = req.user.permission || 'personal';
         
-        if (userPermission === 'global' || userPermission === 'readonly_global') {
-            // 全局权限：查看所有项目，并显示项目所有者
+        if (userPermission === 'global' || userPermission === 'readonly_global' || req.user.role === 'admin') {
+            // 全局权限或管理员：查看所有项目，并显示项目所有者
             sql = `SELECT p.id, p.name, p.type, p.status, p.created_at, p.description, p.last_operation_at,
                           u.username as last_operator_name,
                           owner.username as owner_name,
@@ -88,8 +88,8 @@ router.get('/:id', async (req, res) => {
         // 根据用户权限决定查询条件（NULL视为personal权限）
         const userPermission = req.user.permission || 'personal';
         
-        if (userPermission === 'global' || userPermission === 'readonly_global') {
-            // 全局权限：可以访问任何项目
+        if (userPermission === 'global' || userPermission === 'readonly_global' || req.user.role === 'admin') {
+            // 全局权限或管理员：可以访问任何项目
             sql = 'SELECT * FROM projects WHERE id = ?';
             params = [projectId];
         } else {
@@ -164,8 +164,8 @@ router.put('/:id/prompts', async (req, res) => {
         
         // 验证项目权限
         let sql, params;
-        if (userPermission === 'global') {
-            // 全局权限：可以修改任何项目
+        if (userPermission === 'global' || req.user.role === 'admin') {
+            // 全局权限或管理员：可以修改任何项目
             sql = 'SELECT id, user_id FROM projects WHERE id = ?';
             params = [id];
         } else {
@@ -230,8 +230,8 @@ router.put('/:id', async (req, res) => {
 
         // 根据权限设置WHERE条件
         let whereClause, whereParams;
-        if (userPermission === 'global') {
-            // 全局权限：可以修改任何项目
+        if (userPermission === 'global' || req.user.role === 'admin') {
+            // 全局权限或管理员：可以修改任何项目
             whereClause = 'WHERE id = ?';
             whereParams = [id];
         } else {
@@ -269,8 +269,8 @@ router.delete('/:id', async (req, res) => {
 
         // 验证项目权限
         let sql, params;
-        if (userPermission === 'global') {
-            // 全局权限：可以删除任何项目
+        if (userPermission === 'global' || req.user.role === 'admin') {
+            // 全局权限或管理员：可以删除任何项目
             sql = 'SELECT id FROM projects WHERE id = ?';
             params = [projectId];
         } else {

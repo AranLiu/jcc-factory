@@ -180,7 +180,7 @@ const VideoCard = ({ file, onRename, onAnalyze, onPlay, onDelete, onEdit, onDown
         <div style={{ padding: '12px' }}>
           <div style={{ display: 'flex', gap: '24px' }}>
             {/* Left Side: Thumbnail */}
-            <div style={{ flex: '0 0 200px', textAlign: 'center' }}>
+            <div style={{ flex: '0 0 120px', textAlign: 'center' }}>
               <div className="video-thumbnail-list" onClick={() => onPlay(file)}>
                 {file.thumbnail_path ? (
                   <img 
