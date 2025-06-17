@@ -236,13 +236,27 @@ router.post('/archive', async (req, res) => {
         const buffer = await Packer.toBuffer(doc);
         fs.writeFileSync(docxFilePath, buffer);
 
-        // 4. 将文件元信息存入数据库
+        // 4. 处理同名文件问题，生成唯一标题
+        let finalTitle = title.endsWith('.docx') ? title : `${title}.docx`;
+        
+        // 检查是否存在同名文件
+        const [existingFiles] = await pool.execute(
+            'SELECT COUNT(*) as count FROM knowledge_base WHERE user_id = ? AND title LIKE ?',
+            [userId, `${finalTitle.replace('.docx', '')}%`]
+        );
+        
+        if (existingFiles[0].count > 0) {
+            // 如果存在同名文件，添加时间戳
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            const baseName = finalTitle.replace('.docx', '');
+            finalTitle = `${baseName}_${timestamp}.docx`;
+        }
+        
+        // 5. 将文件元信息存入数据库
         const fileSize = buffer.length; // DOCX文件的大小
-        // 确保标题以.docx结尾，以便前端正确显示文件类型
-        const titleWithExtension = title.endsWith('.docx') ? title : `${title}.docx`;
         await pool.execute(
             'INSERT INTO knowledge_base (project_id, user_id, title, file_path, file_type, file_size) VALUES (?, ?, ?, ?, ?, ?)',
-            [projectId, userId, titleWithExtension, relativeDocxPath, 'docx', fileSize]
+            [projectId, userId, finalTitle, relativeDocxPath, 'docx', fileSize]
         );
 
         res.status(201).json({ message: '成功存档为DOCX文件' });
@@ -259,18 +273,29 @@ router.post('/archive', async (req, res) => {
 
 // GET /api/knowledge-base/ - Get knowledge base list, with tag filtering
 router.get('/', async (req, res) => {
-    const { id: userId } = req.user;
+    const { id: userId, permission: userPermission, role: userRole } = req.user;
     const { tagIds } = req.query; // e.g., ?tagIds=1,2,3
 
     try {
         let query = `
-            SELECT kb.*, GROUP_CONCAT(t.id) as tag_ids, GROUP_CONCAT(t.name) as tag_names, GROUP_CONCAT(t.color) as tag_colors
+            SELECT kb.*, u.username as owner_name, GROUP_CONCAT(t.id) as tag_ids, GROUP_CONCAT(t.name) as tag_names, GROUP_CONCAT(t.color) as tag_colors
             FROM knowledge_base kb
+            LEFT JOIN users u ON kb.user_id = u.id
             LEFT JOIN knowledge_base_tags kbt ON kb.id = kbt.knowledge_base_id
             LEFT JOIN tags t ON kbt.tag_id = t.id
-            WHERE kb.user_id = ?
         `;
-        const params = [userId];
+        
+        let params = [];
+        
+        // 权限检查：admin和global权限用户可以看到所有文件
+        if (userPermission === 'global' || userRole === 'admin') {
+            // 全局权限：显示所有用户的知识库文件
+            query += ' WHERE 1=1';
+        } else {
+            // 个人权限：只显示自己的文件
+            query += ' WHERE kb.user_id = ?';
+            params.push(userId);
+        }
 
         if (tagIds) {
             const tagIdArray = tagIds.split(',').map(id => parseInt(id.trim(), 10)).filter(id => !isNaN(id));
@@ -334,8 +359,9 @@ router.get('/:id/content', async (req, res) => {
 
         const entry = entries[0];
 
-        // 2. 验证所有权
-        if (entry.user_id !== userId) {
+        // 2. 权限检查：admin和global权限用户可以访问所有文件
+        const { permission: userPermission, role: userRole } = req.user;
+        if (entry.user_id !== userId && userPermission !== 'global' && userRole !== 'admin') {
             return res.status(403).json({ message: '无权访问此文件' });
         }
 
@@ -386,8 +412,9 @@ router.get('/:id/preview', async (req, res) => {
             return res.status(404).json({ message: '文件不存在' });
         }
 
-        // 2. 验证所有权
-        if (entries[0].user_id !== userId) {
+        // 2. 权限检查：admin和global权限用户可以访问所有文件
+        const { permission: userPermission, role: userRole } = req.user;
+        if (entries[0].user_id !== userId && userPermission !== 'global' && userRole !== 'admin') {
             return res.status(403).json({ message: '无权访问此文件' });
         }
 
@@ -420,17 +447,20 @@ router.get('/:id/preview', async (req, res) => {
 router.put('/:id/title', async (req, res) => {
     const { id: knowledgeBaseId } = req.params;
     const { title } = req.body;
-    const { id: userId } = req.user;
+    const { id: userId, permission: userPermission, role: userRole } = req.user;
 
     if (!title || !title.trim()) {
         return res.status(400).json({ message: 'Title is required.' });
     }
 
     try {
-        // Verify user owns the knowledge base item
+        // 权限检查：admin和global权限用户可以修改所有文件
         const [kbItems] = await pool.execute('SELECT user_id FROM knowledge_base WHERE id = ?', [knowledgeBaseId]);
-        if (kbItems.length === 0 || kbItems[0].user_id !== userId) {
-            return res.status(404).json({ message: 'Knowledge base item not found or permission denied.'});
+        if (kbItems.length === 0) {
+            return res.status(404).json({ message: 'Knowledge base item not found.'});
+        }
+        if (kbItems[0].user_id !== userId && userPermission !== 'global' && userRole !== 'admin') {
+            return res.status(403).json({ message: 'Permission denied.'});
         }
 
         await pool.execute(
@@ -448,17 +478,20 @@ router.put('/:id/title', async (req, res) => {
 router.post('/:id/tags', async (req, res) => {
     const { id: knowledgeBaseId } = req.params;
     const { tagId } = req.body;
-    const { id: userId } = req.user;
+    const { id: userId, permission: userPermission, role: userRole } = req.user;
 
     if (!tagId) {
         return res.status(400).json({ message: 'Tag ID is required.' });
     }
 
     try {
-        // Verify user owns the knowledge base item
+        // 权限检查：admin和global权限用户可以修改所有文件
         const [kbItems] = await pool.execute('SELECT user_id FROM knowledge_base WHERE id = ?', [knowledgeBaseId]);
-        if (kbItems.length === 0 || kbItems[0].user_id !== userId) {
-            return res.status(404).json({ message: 'Knowledge base item not found or permission denied.'});
+        if (kbItems.length === 0) {
+            return res.status(404).json({ message: 'Knowledge base item not found.'});
+        }
+        if (kbItems[0].user_id !== userId && userPermission !== 'global' && userRole !== 'admin') {
+            return res.status(403).json({ message: 'Permission denied.'});
         }
         // Verify user owns the tag
         const [tags] = await pool.execute('SELECT user_id FROM tags WHERE id = ?', [tagId]);
@@ -512,7 +545,7 @@ router.delete('/:id/tags/:tagId', async (req, res) => {
 // GET /api/knowledge-base/:id/content - 获取文件的原始内容（用于编辑）
 router.get('/:id/content', async (req, res) => {
     const { id: entryId } = req.params;
-    const { id: userId } = req.user;
+    const { id: userId, permission: userPermission, role: userRole } = req.user;
 
     try {
         // 获取文件信息
@@ -525,7 +558,8 @@ router.get('/:id/content', async (req, res) => {
             return res.status(404).json({ message: '文件不存在' });
         }
 
-        if (entries[0].user_id !== userId) {
+        // 权限检查：admin和global权限用户可以访问所有文件
+        if (entries[0].user_id !== userId && userPermission !== 'global' && userRole !== 'admin') {
             return res.status(403).json({ message: '无权访问此文件' });
         }
 
@@ -566,7 +600,7 @@ router.get('/:id/content', async (req, res) => {
 router.put('/:id/content', async (req, res) => {
     const { id: entryId } = req.params;
     const { content } = req.body;
-    const { id: userId } = req.user;
+    const { id: userId, permission: userPermission, role: userRole } = req.user;
 
     if (!content) {
         return res.status(400).json({ message: '文档内容不能为空' });
@@ -583,7 +617,8 @@ router.put('/:id/content', async (req, res) => {
             return res.status(404).json({ message: '文件不存在' });
         }
 
-        if (entries[0].user_id !== userId) {
+        // 权限检查：admin和global权限用户可以修改所有文件
+        if (entries[0].user_id !== userId && userPermission !== 'global' && userRole !== 'admin') {
             return res.status(403).json({ message: '无权修改此文件' });
         }
 
@@ -638,7 +673,7 @@ router.put('/:id/content', async (req, res) => {
 // GET /api/knowledge-base/:id/download - 下载文件
 router.get('/:id/download', async (req, res) => {
     const { id: entryId } = req.params;
-    const { id: userId } = req.user;
+    const { id: userId, permission: userPermission, role: userRole } = req.user;
 
     try {
         // 获取文件信息
@@ -651,7 +686,8 @@ router.get('/:id/download', async (req, res) => {
             return res.status(404).json({ message: '文件不存在' });
         }
 
-        if (entries[0].user_id !== userId) {
+        // 权限检查：admin和global权限用户可以访问所有文件
+        if (entries[0].user_id !== userId && userPermission !== 'global' && userRole !== 'admin') {
             return res.status(403).json({ message: '无权访问此文件' });
         }
 

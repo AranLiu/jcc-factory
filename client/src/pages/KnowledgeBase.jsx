@@ -746,12 +746,25 @@ const FileCard = ({ item, allTags, onDelete, onDataRefresh, selected, onSelect }
         </div>
 
         {/* 文件信息行 - 左右分布 */}
+        {/* 文件所有者信息 */}
+        {item.owner_name && (
+          <div style={{ 
+            fontSize: 11, 
+            color: '#666', 
+            marginBottom: 8,
+            fontWeight: 500
+          }}>
+            创建者: {item.owner_name}
+          </div>
+        )}
+
+        {/* 文件大小和时间 */}
         <div style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
           marginBottom: 16, // 2*8px
-          color: '#666',
+          color: '#999',
           fontSize: 12,
         }}>
           <span>{formatFileSize(fileSize)}</span>

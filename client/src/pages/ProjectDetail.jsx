@@ -1469,7 +1469,7 @@ const ProjectDetail = () => {
                                 onClick={handleArchive} 
                                 disabled={!integrationResult || !canEdit}
                               >
-                                存档为DOC
+                                知识库存档
                               </Button>
                             </Tooltip>
                           </div>
@@ -1533,16 +1533,16 @@ const ProjectDetail = () => {
         />
       </Modal>
       <Modal
-        title="剧本存档 - 将保存为DOCX格式"
+        title="剧本存档"
         open={isArchiveModalVisible}
         onOk={handleConfirmArchive}
         onCancel={() => setIsArchiveModalVisible(false)}
-        okText="存档为DOCX"
+        okText="存档"
         cancelText="取消"
       >
         <div style={{ marginBottom: 16 }}>
           <Text type="secondary">
-            剧本将以专业格式保存为DOCX文档，包含格式化的标题、角色名称和舞台指示。
+            剧本将以专业格式保存为DOCX文档，包含格式化的标题。
           </Text>
         </div>
         <Input 
