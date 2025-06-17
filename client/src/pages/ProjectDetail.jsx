@@ -1463,12 +1463,14 @@ const ProjectDetail = () => {
                         <Col span={12}>
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: '32px', marginBottom: '8px' }}>
                             <Title level={5} style={{ margin: 0 }}>成品区</Title>
-                            <Tooltip title={canEdit ? "知识库存档" : "只读权限，无法存档"}>
+                            <Tooltip title={canEdit ? "保存为DOCX格式到知识库" : "只读权限，无法存档"}>
                               <Button 
                                 icon={<BookOutlined />} 
                                 onClick={handleArchive} 
-                                disabled={!integrationResult || !canEdit} 
-                              />
+                                disabled={!integrationResult || !canEdit}
+                              >
+                                存档为DOC
+                              </Button>
                             </Tooltip>
                           </div>
                           <div className="integration-result-panel" style={{position: 'relative', minHeight: '320px'}}>
@@ -1531,17 +1533,23 @@ const ProjectDetail = () => {
         />
       </Modal>
       <Modal
-        title="为存档命名"
+        title="剧本存档 - 将保存为DOCX格式"
         open={isArchiveModalVisible}
         onOk={handleConfirmArchive}
         onCancel={() => setIsArchiveModalVisible(false)}
-        okText="确认存档"
+        okText="存档为DOCX"
         cancelText="取消"
       >
+        <div style={{ marginBottom: 16 }}>
+          <Text type="secondary">
+            剧本将以专业格式保存为DOCX文档，包含格式化的标题、角色名称和舞台指示。
+          </Text>
+        </div>
         <Input 
-          placeholder="输入存档的标题"
+          placeholder="输入剧本存档的标题（将作为文档标题）"
           value={archiveTitle}
           onChange={(e) => setArchiveTitle(e.target.value)}
+          suffix={<Text type="secondary">.docx</Text>}
         />
       </Modal>
       <Modal

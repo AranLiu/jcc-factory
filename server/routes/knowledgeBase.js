@@ -1,5 +1,5 @@
 const express = require('express');
-const { Document, Packer, Paragraph, TextRun } = require('docx');
+const { Document, Packer, Paragraph, TextRun, AlignmentType, HeadingLevel } = require('docx');
 const fs = require('fs');
 const path = require('path');
 const mammoth = require('mammoth');
@@ -132,15 +132,97 @@ router.post('/archive', async (req, res) => {
         fs.mkdirSync(knowledgeBaseDir, { recursive: true });
     }
 
-    // 2. 创建 DOCX 文档
+    // 2. 创建 DOCX 文档，专门针对剧本格式进行优化
     const doc = new Document({
+        creator: "JCC Factory",
+        title: title,
+        description: "剧本整合存档",
         sections: [{
             properties: {},
-            children: content.split('\n').map(textLine =>
+            children: [
+                // 添加文档标题
                 new Paragraph({
-                    children: [new TextRun(textLine)],
+                    children: [new TextRun({
+                        text: title,
+                        bold: true,
+                        size: 32 // 16pt
+                    })],
+                    heading: HeadingLevel.TITLE,
+                    alignment: AlignmentType.CENTER,
+                    spacing: {
+                        after: 400,
+                        before: 200
+                    }
+                }),
+                // 添加内容
+                ...content.split('\n').map((textLine, index) => {
+                    // 如果是空行，创建空段落
+                    if (textLine.trim() === '') {
+                        return new Paragraph({
+                            children: [new TextRun('')],
+                        });
+                    }
+                    
+                    // 检查是否是标题行（通常剧本标题会包含特定格式）
+                    if (textLine.includes('第') && textLine.includes('集') || 
+                        textLine.includes('场景') || 
+                        textLine.includes('SCENE') ||
+                        textLine.startsWith('=') ||
+                        textLine.startsWith('#')) {
+                        return new Paragraph({
+                            children: [new TextRun({
+                                text: textLine,
+                                bold: true,
+                                size: 28 // 14pt
+                            })],
+                            heading: HeadingLevel.HEADING_1,
+                            spacing: {
+                                after: 200, // 段后间距
+                                before: 200 // 段前间距
+                            }
+                        });
+                    }
+                    
+                    // 检查是否是角色名称（通常全大写或以冒号结尾）
+                    if (textLine.match(/^[A-Z\u4e00-\u9fa5]+[:：]/) || 
+                        textLine.match(/^[A-Z\u4e00-\u9fa5]+\s*\(/) ||
+                        (textLine === textLine.toUpperCase() && textLine.length < 20 && textLine.length > 1)) {
+                        return new Paragraph({
+                            children: [new TextRun({
+                                text: textLine,
+                                bold: true,
+                                color: '0066CC'
+                            })],
+                            spacing: {
+                                after: 100,
+                                before: 100
+                            }
+                        });
+                    }
+                    
+                    // 检查是否是舞台指示（通常包含在括号中）
+                    if (textLine.match(/^\s*[（(].*[）)]\s*$/)) {
+                        return new Paragraph({
+                            children: [new TextRun({
+                                text: textLine,
+                                italics: true,
+                                color: '666666'
+                            })],
+                            spacing: {
+                                after: 100
+                            }
+                        });
+                    }
+                    
+                    // 普通文本段落
+                    return new Paragraph({
+                        children: [new TextRun(textLine)],
+                        spacing: {
+                            after: 100
+                        }
+                    });
                 })
-            ),
+            ],
         }],
     });
 
