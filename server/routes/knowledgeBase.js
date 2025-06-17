@@ -238,9 +238,11 @@ router.post('/archive', async (req, res) => {
 
         // 4. 将文件元信息存入数据库
         const fileSize = buffer.length; // DOCX文件的大小
+        // 确保标题以.docx结尾，以便前端正确显示文件类型
+        const titleWithExtension = title.endsWith('.docx') ? title : `${title}.docx`;
         await pool.execute(
             'INSERT INTO knowledge_base (project_id, user_id, title, file_path, file_type, file_size) VALUES (?, ?, ?, ?, ?, ?)',
-            [projectId, userId, title, relativeDocxPath, 'docx', fileSize]
+            [projectId, userId, titleWithExtension, relativeDocxPath, 'docx', fileSize]
         );
 
         res.status(201).json({ message: '成功存档为DOCX文件' });
@@ -311,6 +313,60 @@ router.get('/', async (req, res) => {
     } catch (error) {
         console.error('Failed to get knowledge base list:', error);
         res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
+// GET /api/knowledge-base/:id/content - 获取文件内容用于预览
+router.get('/:id/content', async (req, res) => {
+    const { id: entryId } = req.params;
+    const { id: userId } = req.user;
+
+    try {
+        // 1. 从数据库获取文件信息
+        const [entries] = await pool.execute(
+            'SELECT file_path, user_id, file_type, content FROM knowledge_base WHERE id = ?',
+            [entryId]
+        );
+
+        if (entries.length === 0) {
+            return res.status(404).json({ message: '文件不存在' });
+        }
+
+        const entry = entries[0];
+
+        // 2. 验证所有权
+        if (entry.user_id !== userId) {
+            return res.status(403).json({ message: '无权访问此文件' });
+        }
+
+        // 3. 如果有文件路径，读取DOCX文件并转换为文本
+        if (entry.file_path) {
+            const absolutePath = path.join(process.cwd(), entry.file_path);
+
+            if (!fs.existsSync(absolutePath)) {
+                return res.status(404).json({ message: '文件在服务器上不存在' });
+            }
+
+            try {
+                // 使用 mammoth 提取纯文本内容
+                const result = await mammoth.extractRawText({ path: absolutePath });
+                const textContent = result.value;
+
+                res.json({ content: textContent });
+            } catch (error) {
+                console.error('提取DOCX文本内容失败:', error);
+                res.status(500).json({ message: '无法读取文件内容' });
+            }
+        } else if (entry.content) {
+            // 如果没有文件路径但有存储的内容
+            res.json({ content: entry.content });
+        } else {
+            res.json({ content: '暂无内容' });
+        }
+
+    } catch (error) {
+        console.error(`获取文件内容失败 ID ${entryId}:`, error);
+        res.status(500).json({ message: '获取文件内容失败' });
     }
 });
 
