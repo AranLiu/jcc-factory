@@ -82,7 +82,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 // DELETE /api/knowledge-base/:id - Delete a file
 router.delete('/:id', async (req, res) => {
     const { id: entryId } = req.params;
-    const { id: userId } = req.user;
+    const { id: userId, permission: userPermission, role: userRole } = req.user;
 
     try {
         // 1. Get file path from DB to verify ownership and for deletion
@@ -94,7 +94,9 @@ router.delete('/:id', async (req, res) => {
         if (entries.length === 0) {
             return res.status(404).json({ message: 'File not found.' });
         }
-        if (entries[0].user_id !== userId) {
+        
+        // 权限检查：admin和global权限用户可以删除所有文件
+        if (entries[0].user_id !== userId && userPermission !== 'global' && userRole !== 'admin') {
             return res.status(403).json({ message: 'You do not have permission to delete this file.' });
         }
 
@@ -255,8 +257,8 @@ router.post('/archive', async (req, res) => {
         // 5. 将文件元信息存入数据库
         const fileSize = buffer.length; // DOCX文件的大小
         await pool.execute(
-            'INSERT INTO knowledge_base (project_id, user_id, title, file_path, file_type, file_size) VALUES (?, ?, ?, ?, ?, ?)',
-            [projectId, userId, finalTitle, relativeDocxPath, 'docx', fileSize]
+            'INSERT INTO knowledge_base (project_id, user_id, title, file_path, file_type, file_size, last_modified_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [projectId, userId, finalTitle, relativeDocxPath, 'docx', fileSize, userId]
         );
 
         res.status(201).json({ message: '成功存档为DOCX文件' });
@@ -278,9 +280,11 @@ router.get('/', async (req, res) => {
 
     try {
         let query = `
-            SELECT kb.*, u.username as owner_name, GROUP_CONCAT(t.id) as tag_ids, GROUP_CONCAT(t.name) as tag_names, GROUP_CONCAT(t.color) as tag_colors
+            SELECT kb.*, u.username as owner_name, lm.username as last_modified_by_name, 
+                   GROUP_CONCAT(t.id) as tag_ids, GROUP_CONCAT(t.name) as tag_names, GROUP_CONCAT(t.color) as tag_colors
             FROM knowledge_base kb
             LEFT JOIN users u ON kb.user_id = u.id
+            LEFT JOIN users lm ON kb.last_modified_by = lm.id
             LEFT JOIN knowledge_base_tags kbt ON kb.id = kbt.knowledge_base_id
             LEFT JOIN tags t ON kbt.tag_id = t.id
         `;
@@ -464,8 +468,8 @@ router.put('/:id/title', async (req, res) => {
         }
 
         await pool.execute(
-            'UPDATE knowledge_base SET title = ? WHERE id = ?',
-            [title.trim(), knowledgeBaseId]
+            'UPDATE knowledge_base SET title = ?, last_modified_by = ? WHERE id = ?',
+            [title.trim(), userId, knowledgeBaseId]
         );
         res.status(200).json({ message: 'Title updated successfully.' });
     } catch (error) {
@@ -493,16 +497,26 @@ router.post('/:id/tags', async (req, res) => {
         if (kbItems[0].user_id !== userId && userPermission !== 'global' && userRole !== 'admin') {
             return res.status(403).json({ message: 'Permission denied.'});
         }
-        // Verify user owns the tag
+        // Verify user owns the tag - admin和global权限用户可以使用所有标签
         const [tags] = await pool.execute('SELECT user_id FROM tags WHERE id = ?', [tagId]);
-        if (tags.length === 0 || tags[0].user_id !== userId) {
-            return res.status(404).json({ message: 'Tag not found or permission denied.'});
+        if (tags.length === 0) {
+            return res.status(404).json({ message: 'Tag not found.'});
+        }
+        if (tags[0].user_id !== userId && userPermission !== 'global' && userRole !== 'admin') {
+            return res.status(403).json({ message: 'Permission denied to use this tag.'});
         }
 
         await pool.execute(
             'INSERT INTO knowledge_base_tags (knowledge_base_id, tag_id) VALUES (?, ?)',
             [knowledgeBaseId, tagId]
         );
+        
+        // 更新最后修改人
+        await pool.execute(
+            'UPDATE knowledge_base SET last_modified_by = ? WHERE id = ?',
+            [userId, knowledgeBaseId]
+        );
+        
         res.status(201).json({ message: 'Tag added successfully.' });
     } catch (error) {
         if (error.code === 'ER_DUP_ENTRY') {
@@ -516,14 +530,19 @@ router.post('/:id/tags', async (req, res) => {
 // DELETE /api/knowledge-base/:id/tags/:tagId - Remove a tag from an item
 router.delete('/:id/tags/:tagId', async (req, res) => {
     const { id: knowledgeBaseId, tagId } = req.params;
-    const { id: userId } = req.user;
+    const { id: userId, permission: userPermission, role: userRole } = req.user;
 
     try {
         // Verify ownership by checking if the user owns the knowledge base item.
         // A more complex check could join all three tables, but this is sufficient.
         const [kbItems] = await pool.execute('SELECT user_id FROM knowledge_base WHERE id = ?', [knowledgeBaseId]);
-        if (kbItems.length === 0 || kbItems[0].user_id !== userId) {
-            return res.status(404).json({ message: 'Knowledge base item not found or permission denied.'});
+        if (kbItems.length === 0) {
+            return res.status(404).json({ message: 'Knowledge base item not found.'});
+        }
+        
+        // 权限检查：admin和global权限用户可以修改所有文件的标签
+        if (kbItems[0].user_id !== userId && userPermission !== 'global' && userRole !== 'admin') {
+            return res.status(403).json({ message: 'Permission denied.'});
         }
 
         const [result] = await pool.execute(
@@ -534,6 +553,13 @@ router.delete('/:id/tags/:tagId', async (req, res) => {
         if (result.affectedRows === 0) {
             return res.status(404).json({ message: 'Tag association not found.' });
         }
+        
+        // 更新最后修改人
+        await pool.execute(
+            'UPDATE knowledge_base SET last_modified_by = ? WHERE id = ?',
+            [userId, knowledgeBaseId]
+        );
+        
         res.status(200).json({ message: 'Tag removed successfully.' });
 
     } catch (error) {
@@ -634,6 +660,12 @@ router.put('/:id/content', async (req, res) => {
         if (file_type === 'text/plain') {
             // 直接写入文本文件
             fs.writeFileSync(absolutePath, content, 'utf8');
+            
+            // 更新最后修改人
+            await pool.execute(
+                'UPDATE knowledge_base SET last_modified_by = ? WHERE id = ?',
+                [userId, entryId]
+            );
         } else if (file_type.includes('wordprocessingml') || file_type.includes('msword')) {
             // 创建新的DOCX文件
             const doc = new Document({
@@ -650,10 +682,10 @@ router.put('/:id/content', async (req, res) => {
             const buffer = await Packer.toBuffer(doc);
             fs.writeFileSync(absolutePath, buffer);
             
-            // 更新文件大小
+            // 更新文件大小和最后修改人
             await pool.execute(
-                'UPDATE knowledge_base SET file_size = ? WHERE id = ?',
-                [buffer.length, entryId]
+                'UPDATE knowledge_base SET file_size = ?, last_modified_by = ? WHERE id = ?',
+                [buffer.length, userId, entryId]
             );
         } else {
             return res.status(400).json({ message: '不支持编辑此文件类型' });

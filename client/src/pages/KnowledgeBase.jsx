@@ -617,20 +617,23 @@ const FileCard = ({ item, allTags, onDelete, onDataRefresh, selected, onSelect }
           border: selected ? '2px solid #1890ff' : '1px solid #d9d9d9',
           borderRadius: 8,
           transition: 'all 0.2s ease',
-          height: 200, // 固定高度
+          height: 235, // 增加固定高度以容纳更多信息
         }}
         bodyStyle={{ 
-          padding: 16, // 8点网格系统：2*8px
+          padding: 20, // 增加内边距：2.5*8px
+          display: 'flex',
+          flexDirection: 'column',
+          height: '100%', // 确保body占满Card高度
         }}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
       >
-        {/* 顶部操作区 - 8px间距 */}
+        {/* 顶部操作区 - 调整间距 */}
         <div style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          marginBottom: 16, // 2*8px
+          marginBottom: 12, // 减少边距以节省空间
         }}>
           {/* 选择框 */}
           <Checkbox
@@ -758,25 +761,47 @@ const FileCard = ({ item, allTags, onDelete, onDataRefresh, selected, onSelect }
           </div>
         )}
 
-        {/* 文件大小和时间 */}
+        {/* 文件大小和创建时间 */}
         <div style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          marginBottom: 16, // 2*8px
+          marginBottom: 8, // 8px间距
           color: '#999',
           fontSize: 12,
         }}>
           <span>{formatFileSize(fileSize)}</span>
-          <span>{dayjs(item.updated_at).format('YYYY-MM-DD HH:mm')}</span>
+          <span>创建: {dayjs(item.created_at).format('YYYY-MM-DD HH:mm')}</span>
         </div>
 
-        {/* 标签区域 */}
+        {/* 最后修改信息 */}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 12, // 减少间距以节省空间
+          color: '#666',
+          fontSize: 11,
+          fontStyle: 'italic',
+        }}>
+          <span>最后修改: {item.last_modified_by_name || item.owner_name}</span>
+          <span>
+            {item.updated_at && item.updated_at !== item.created_at 
+              ? dayjs(item.updated_at).format('YYYY-MM-DD HH:mm')
+              : '未修改'
+            }
+          </span>
+        </div>
+
+        {/* 标签区域 - 使用flex-grow占据剩余空间 */}
         <div style={{ 
           display: 'flex',
           flexWrap: 'wrap',
           gap: 8, // 8px间距
-          alignItems: 'center',
+          alignItems: 'flex-start', // 改为顶部对齐
+          flex: 1, // 占据剩余空间
+          minHeight: 40, // 最小高度确保标签有足够空间
+          marginTop: 'auto', // 推到底部
         }}>
           {/* 显示标签 */}
           {displayTags.map((tag) => (

@@ -111,6 +111,8 @@ CREATE TABLE IF NOT EXISTS knowledge_base (
     file_type VARCHAR(255),
     file_size BIGINT DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    last_modified_by INT,
     
     -- 添加索引
     INDEX idx_user_id (user_id),
@@ -118,13 +120,16 @@ CREATE TABLE IF NOT EXISTS knowledge_base (
     INDEX idx_title (title),
     INDEX idx_file_type (file_type),
     INDEX idx_created_at (created_at),
+    INDEX idx_updated_at (updated_at),
+    INDEX idx_last_modified_by (last_modified_by),
     
     -- 全文搜索索引
     FULLTEXT INDEX ft_title_content (title, content),
     
     -- 外键约束
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (last_modified_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
 -- 标签表

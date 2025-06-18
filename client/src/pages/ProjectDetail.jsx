@@ -423,6 +423,33 @@ const ProjectDetail = () => {
     }
   }, [id])
 
+  // 当模型配置加载完成后，设置Form的初始值（仅在字段为空时设置）
+  useEffect(() => {
+    if (modelConfig.defaultModel) {
+      const currentValues = form.getFieldsValue();
+      const fieldsToUpdate = {};
+      
+      // 只在字段为空或未定义时设置默认值
+      if (!currentValues.model) {
+        fieldsToUpdate.model = modelConfig.defaultModel;
+      }
+      if (!currentValues.integration_model) {
+        fieldsToUpdate.integration_model = modelConfig.defaultModel;
+      }
+      if (currentValues.temperature === undefined || currentValues.temperature === null) {
+        fieldsToUpdate.temperature = 1;
+      }
+      if (currentValues.integration_temperature === undefined || currentValues.integration_temperature === null) {
+        fieldsToUpdate.integration_temperature = 1;
+      }
+      
+      // 只有需要更新的字段才设置
+      if (Object.keys(fieldsToUpdate).length > 0) {
+        form.setFieldsValue(fieldsToUpdate);
+      }
+    }
+  }, [modelConfig, form])
+
   // 加载模型配置
   const loadModelConfig = async () => {
     try {
@@ -545,7 +572,7 @@ const ProjectDetail = () => {
         prompt: values.prompt,
         modelConfig: {
           temperature: values.temperature || 1,
-          model: values.model || 'gemini-pro'
+          model: values.model || modelConfig.defaultModel
         }
       })
       message.success('AI分析任务已创建')
@@ -826,7 +853,7 @@ const ProjectDetail = () => {
           fileId: fileId,
           prompt: analysis_prompt,
           modelConfig: {
-            model: model || 'gemini-1.5-flash',
+            model: model || modelConfig.defaultModel,
             temperature: temperature || 1,
             topK: top_k,
             topP: top_p,
@@ -1206,9 +1233,8 @@ const ProjectDetail = () => {
                             style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
                             bodyStyle={{ flex: 1, display: 'flex', flexDirection: 'column' }}
                           >
-                            <Form.Item name="model" label="模型">
+                            <Form.Item name="model" label="模型" initialValue={modelConfig.defaultModel}>
                             <Select 
-                              defaultValue={modelConfig.defaultModel} 
                               style={{ width: '100%' }} 
                               disabled={!canEdit}
                             >
@@ -1221,37 +1247,37 @@ const ProjectDetail = () => {
                               ))}
                             </Select>
                           </Form.Item>
-                          <Form.Item
-                            label="Temperature"
-                            style={{ marginBottom: 0 }}
-                            shouldUpdate={(prev, curr) => prev.temperature !== curr.temperature}
-                          >
-                            {({ getFieldValue, setFieldsValue }) => (
-                              <Row align="middle" gutter={8}>
-                                <Col flex="auto">
-                                  <Slider
-                                    min={0}
-                                    max={2}
-                                    step={0.1}
-                                    value={getFieldValue('temperature') ?? 1}
-                                    onChange={val => setFieldsValue({ temperature: val })}
-                                    disabled={!canEdit}
-                                  />
-                                </Col>
-                                <Col>
-                                  <InputNumber
-                                    min={0}
-                                    max={2}
-                                    step={0.1}
-                                    value={getFieldValue('temperature') ?? 1}
-                                    onChange={val => setFieldsValue({ temperature: val })}
-                                    disabled={!canEdit}
-                                    style={{ width: 60, marginLeft: 8 }}
-                                  />
-                                </Col>
-                              </Row>
-                            )}
-                          </Form.Item>
+                          <Row align="middle" gutter={8}>
+                            <Col flex="auto">
+                              <Form.Item
+                                label="Temperature"
+                                name="temperature"
+                                initialValue={1}
+                              >
+                                <Slider
+                                  min={0}
+                                  max={2}
+                                  step={0.1}
+                                  disabled={!canEdit}
+                                />
+                              </Form.Item>
+                            </Col>
+                            <Col>
+                              <Form.Item
+                                name="temperature"
+                                initialValue={1}
+                                style={{ marginTop: 30 }}
+                              >
+                                <InputNumber
+                                  min={0}
+                                  max={2}
+                                  step={0.1}
+                                  disabled={!canEdit}
+                                  style={{ width: 60, marginLeft: 8 }}
+                                />
+                              </Form.Item>
+                            </Col>
+                          </Row>
                           <Form.Item name="analysis_prompt" label="Prompt" style={{ marginBottom: 8, flex: 1, display: 'flex', flexDirection: 'column' }}>
                             <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                               <EditableTextArea
@@ -1366,8 +1392,8 @@ const ProjectDetail = () => {
                        title="模型配置" 
                        bordered={false}
                      >
-                        <Form.Item label="模型" name="integration_model">
-                            <Select defaultValue={modelConfig.defaultModel} disabled={!canEdit}>
+                        <Form.Item label="模型" name="integration_model" initialValue={modelConfig.defaultModel}>
+                            <Select disabled={!canEdit}>
                               {modelConfig.availableModels.map(model => (
                                 <Select.Option key={model} value={model}>
                                   {model === 'gemini-1.5-flash' ? 'Gemini 1.5 Flash' :

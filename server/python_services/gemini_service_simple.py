@@ -28,7 +28,7 @@ class GeminiService:
         if self.debug:
             print("✅ Gemini Client 初始化成功")
 
-    def analyze_video(self, video_path, prompt, model="gemini-2.0-flash", temperature=0.7):
+    def analyze_video(self, video_path, prompt, model="gemini-1.5-flash", temperature=0.7):
         """分析视频内容，先上传视频文件再调用 Gemini API"""
         try:
             if not os.path.exists(video_path):
@@ -82,7 +82,7 @@ class GeminiService:
                 'error': error_msg
             }
 
-    def generate_text(self, content, system_instruction=None, model="gemini-2.0-flash", temperature=0.7):
+    def generate_text(self, content, system_instruction=None, model="gemini-1.5-flash", temperature=0.7):
         """生成文本内容"""
         try:
             if self.debug:
